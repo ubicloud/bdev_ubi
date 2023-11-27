@@ -1,0 +1,61 @@
+name: Ubicloud SPDK release
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-22.04
+    env:
+      INSTALL_PREFIX: ${{ github.workspace }}/install/spdk
+      TARBALL_PATH: ${{ github.workspace }}/ubicloud-spdk-ubuntu-22.04-x64.tar.gz
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+      - name: Checkout SPDK and submodules
+        uses: actions/checkout@v4
+        with:
+          repository: spdk/spdk
+          ref: refs/tags/v23.09
+          fetch-depth: 0
+          submodules: 'recursive'
+          path: 'spdk'
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt install liburing-dev
+          sudo spdk/scripts/pkgdep.sh
+      - name: Configure
+        run: spdk/configure --with-crypto --with-vhost --target-arch=corei7 --prefix=$INSTALL_PREFIX --pydir=$INSTALL_PREFIX/python/lib --disable-unit-tests --disable-tests --disable-examples
+      - name: Build SPDK
+        run: cd spdk && make -j16
+      - name: Install
+        run: |
+          cd spdk
+          make install
+          cp -R python/* $INSTALL_PREFIX/python/
+          mkdir $INSTALL_PREFIX/scripts
+          cp scripts/rpc.py $INSTALL_PREFIX/scripts
+      - name: Build bdev_ubi
+        run: |
+          SPDK_PATH=$INSTALL_PREFIX make
+          cp build/bin/vhost_ubi $INSTALL_PREFIX/bin/
+      - name: Package
+        run: |
+          cd $INSTALL_PREFIX/..
+          tar --create --gzip --file=$TARBALL_PATH spdk
+      - uses: ncipollo/release-action@v1
+        if: github.event_name == 'workflow_dispatch' && github.ref_type == 'tag'
+        with:
+          artifacts: "${{ env.TARBALL_PATH }}"
+          body: "Release ${{ github.ref_name }}"
+          allowUpdates: true
