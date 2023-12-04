@@ -10,8 +10,10 @@ struct rpc_construct_ubi {
     char *name;
     char *image_path;
     char *base_bdev_name;
-    uint32_t stripe_size_mb;
+    uint32_t stripe_size_kb;
     bool no_sync;
+    bool copy_on_read;
+    bool directio;
 };
 
 static void free_rpc_construct_ubi(struct rpc_construct_ubi *req) {
@@ -26,10 +28,13 @@ static const struct spdk_json_object_decoder rpc_construct_ubi_decoders[] = {
      spdk_json_decode_string},
     {"base_bdev", offsetof(struct rpc_construct_ubi, base_bdev_name),
      spdk_json_decode_string},
-    {"stripe_size_mb", offsetof(struct rpc_construct_ubi, stripe_size_mb),
-     spdk_json_decode_uint32, true},
-    {"no_sync", offsetof(struct rpc_construct_ubi, no_sync), spdk_json_decode_bool,
-     true}};
+    {"stripe_size_kb", offsetof(struct rpc_construct_ubi, stripe_size_kb),
+     spdk_json_decode_uint32},
+    {"no_sync", offsetof(struct rpc_construct_ubi, no_sync), spdk_json_decode_bool, true},
+    {"copy_on_read", offsetof(struct rpc_construct_ubi, copy_on_read),
+     spdk_json_decode_bool, true},
+    {"directio", offsetof(struct rpc_construct_ubi, directio),
+     spdk_json_decode_bool, true}};
 
 static void bdev_ubi_create_done(void *cb_arg, struct spdk_bdev *bdev, int status) {
     struct spdk_jsonrpc_request *request = cb_arg;
@@ -55,8 +60,9 @@ static void rpc_bdev_ubi_create(struct spdk_jsonrpc_request *request,
 
     // set optional parameters. spdk_json_decode_object will overwrite if
     // provided.
-    req.stripe_size_mb = DEFAULT_STRIPE_SIZE_MB;
     req.no_sync = false;
+    req.copy_on_read = true;
+    req.directio = true;
 
     if (spdk_json_decode_object(params, rpc_construct_ubi_decoders,
                                 SPDK_COUNTOF(rpc_construct_ubi_decoders), &req)) {
@@ -69,8 +75,10 @@ static void rpc_bdev_ubi_create(struct spdk_jsonrpc_request *request,
     opts.name = req.name;
     opts.image_path = req.image_path;
     opts.base_bdev_name = req.base_bdev_name;
-    opts.stripe_size_mb = req.stripe_size_mb;
+    opts.stripe_size_kb = req.stripe_size_kb;
     opts.no_sync = req.no_sync;
+    opts.copy_on_read = req.copy_on_read;
+    opts.directio = req.directio;
 
     struct ubi_create_context *context = calloc(1, sizeof(struct ubi_create_context));
     context->done_fn = bdev_ubi_create_done;
