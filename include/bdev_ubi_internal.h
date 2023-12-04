@@ -17,7 +17,7 @@
 
 // support images upto 1TB = 2^40 (assuming 1MB stripe size)
 #define UBI_MAX_STRIPES (1024 * 1024)
-#define UBI_STRIPE_SIZE_MAX 8
+#define UBI_STRIPE_SIZE_MAX 1
 
 #define UBI_PATH_LEN 1024
 
@@ -26,7 +26,7 @@
 #define UBI_VERSION_MAJOR 0
 #define UBI_VERSION_MINOR 1
 
-#define UBI_MAX_ACTIVE_STRIPE_FETCHES 8
+#define UBI_MAX_ACTIVE_STRIPE_FETCHES 4
 #define UBI_FETCH_QUEUE_SIZE 32768
 
 /*
