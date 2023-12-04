@@ -1,6 +1,7 @@
 #include "bdev_ubi.h"
 #include "bdev_ubi_internal.h"
 
+#include "spdk/fd.h"
 #include "spdk/likely.h"
 #include "spdk/log.h"
 
@@ -139,11 +140,14 @@ void bdev_ubi_create(const struct spdk_ubi_bdev_opts *opts,
      * Initialize variables that determine the layout of both metadata and
      * actual data on base bdev.
      *
-     * TODO: if this is not a new disk, we should read stripe_size_mb from
+     * TODO: if this is not a new disk, we should read stripe_size_kb from
      * metadata.
      */
-    ubi_bdev->stripe_size_mb = opts->stripe_size_mb;
+    ubi_bdev->stripe_size_kb = opts->stripe_size_kb;
     ubi_bdev->no_sync = opts->no_sync;
+
+    ubi_bdev->copy_on_read = opts->copy_on_read;
+    ubi_bdev->directio = opts->directio;
 
     strncpy(ubi_bdev->image_path, opts->image_path, UBI_PATH_LEN);
     ubi_bdev->image_path[UBI_PATH_LEN - 1] = 0;
@@ -167,6 +171,9 @@ void bdev_ubi_create(const struct spdk_ubi_bdev_opts *opts,
 
     ubi_bdev->bdev.optimal_io_boundary = ubi_bdev->stripe_block_count;
     ubi_bdev->bdev.split_on_optimal_io_boundary = true;
+
+    ubi_bdev->alignment_bytes = 4096;
+    ubi_bdev->bdev.required_alignment = spdk_u32log2(ubi_bdev->alignment_bytes);
 
     spdk_io_device_register(ubi_bdev, ubi_create_channel_cb, ubi_destroy_channel_cb,
                             sizeof(struct ubi_io_channel), ubi_bdev->bdev.name);
@@ -255,7 +262,7 @@ static bool ubi_new_disk(const uint8_t *magic) {
 static void ubi_init_metadata(struct ubi_bdev *ubi_bdev) {
     memcpy(ubi_bdev->metadata.magic, UBI_MAGIC, UBI_MAGIC_SIZE);
     ubi_set_version(&ubi_bdev->metadata, UBI_VERSION_MAJOR, UBI_VERSION_MINOR);
-    ubi_bdev->metadata.stripe_size_mb = ubi_bdev->stripe_size_mb;
+    ubi_bdev->metadata.stripe_size_kb = ubi_bdev->stripe_size_kb;
 }
 
 /*
@@ -314,18 +321,19 @@ static int ubi_init_layout_params(struct ubi_bdev *ubi_bdev) {
         return -EINVAL;
     }
 
-    if (ubi_bdev->stripe_size_mb < 1 || ubi_bdev->stripe_size_mb > UBI_STRIPE_SIZE_MAX) {
-        UBI_ERRLOG(ubi_bdev, "stripe_size_mb must be between 1 and %d (inclusive)\n",
-                   UBI_STRIPE_SIZE_MAX);
+    if (ubi_bdev->stripe_size_kb < UBI_STRIPE_SIZE_MIN ||
+        ubi_bdev->stripe_size_kb > UBI_STRIPE_SIZE_MAX) {
+        UBI_ERRLOG(ubi_bdev, "stripe_size_kb must be between %d and %d (inclusive)\n",
+                   UBI_STRIPE_SIZE_MIN, UBI_STRIPE_SIZE_MAX);
         return -EINVAL;
     }
 
-    if (ubi_bdev->stripe_size_mb & (ubi_bdev->stripe_size_mb - 1)) {
-        UBI_ERRLOG(ubi_bdev, "stripe_size_mb must be a power of 2\n");
+    if (ubi_bdev->stripe_size_kb & (ubi_bdev->stripe_size_kb - 1)) {
+        UBI_ERRLOG(ubi_bdev, "stripe_size_kb must be a power of 2\n");
         return -EINVAL;
     }
 
-    uint32_t stripSizeBytes = ubi_bdev->stripe_size_mb * 1024 * 1024;
+    uint32_t stripSizeBytes = ubi_bdev->stripe_size_kb * 1024;
     if (stripSizeBytes < blocklen) {
         UBI_ERRLOG(ubi_bdev,
                    "stripe size (%u bytes) can't be less than base bdev's "
@@ -425,7 +433,7 @@ static void ubi_write_config_json(struct spdk_bdev *bdev, struct spdk_json_write
     spdk_json_write_named_string(w, "name", bdev->name);
     spdk_json_write_named_string(w, "base_bdev", ubi_bdev->base_bdev_info.bdev->name);
     spdk_json_write_named_string(w, "image_path", ubi_bdev->image_path);
-    spdk_json_write_named_uint32(w, "stripe_size_mb", ubi_bdev->stripe_size_mb);
+    spdk_json_write_named_uint32(w, "stripe_size_kb", ubi_bdev->stripe_size_kb);
     spdk_json_write_object_end(w);
 
     spdk_json_write_object_end(w);
@@ -477,9 +485,10 @@ static bool ubi_io_type_supported(void *ctx, enum spdk_bdev_io_type io_type) {
 static void ubi_submit_request(struct spdk_io_channel *_ch,
                                struct spdk_bdev_io *bdev_io) {
     struct ubi_io_channel *ch = spdk_io_channel_get_ctx(_ch);
+    struct ubi_bdev *ubi_bdev = bdev_io->bdev->ctxt;
 
-    if (bdev_io->type != SPDK_BDEV_IO_TYPE_FLUSH) {
-        struct ubi_bdev *ubi_bdev = bdev_io->bdev->ctxt;
+    if (bdev_io->type == SPDK_BDEV_IO_TYPE_WRITE ||
+        (bdev_io->type == SPDK_BDEV_IO_TYPE_READ && ubi_bdev->copy_on_read)) {
 
         uint64_t start_block = bdev_io->u.bdev.offset_blocks;
         uint64_t num_blocks = bdev_io->u.bdev.num_blocks;

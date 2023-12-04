@@ -17,11 +17,16 @@ void ubi_start_fetch_stripe(struct ubi_io_channel *ch,
     struct io_uring *ring = &ch->image_file_ring;
     struct io_uring_sqe *sqe = io_uring_get_sqe(ring);
     uint32_t stripe_idx = stripe_fetch->stripe_idx;
+    uint32_t alignment = ubi_bdev->alignment_bytes;
 
-    uint64_t offset = ubi_bdev->stripe_size_mb * 1024L * 1024L * stripe_idx;
-    uint32_t nbytes = ubi_bdev->stripe_size_mb * 1024L * 1024L;
+    uint64_t offset = ubi_bdev->stripe_size_kb * 1024L * stripe_idx;
+    uint32_t nbytes = ubi_bdev->stripe_size_kb * 1024L;
 
-    io_uring_prep_read(sqe, ch->image_file_fd, stripe_fetch->buf, nbytes, offset);
+    uint32_t alignment_offset =
+        alignment - ((uint64_t)stripe_fetch->buf & (alignment - 1));
+    stripe_fetch->buf_aligned = stripe_fetch->buf + alignment_offset;
+
+    io_uring_prep_read(sqe, ch->image_file_fd, stripe_fetch->buf_aligned, nbytes, offset);
     io_uring_sqe_set_data(sqe, stripe_fetch);
 
     int ret = io_uring_submit(ring);
@@ -32,33 +37,18 @@ void ubi_start_fetch_stripe(struct ubi_io_channel *ch,
     }
 }
 
-int ubi_complete_fetch_stripe(struct ubi_io_channel *ch) {
-    struct io_uring *ring = &ch->image_file_ring;
-    struct io_uring_cqe *cqe;
+int ubi_complete_fetch_stripe(struct ubi_io_channel *ch,
+                              struct stripe_fetch *stripe_fetch, int res) {
+    uint64_t offset = ch->ubi_bdev->stripe_size_kb * 1024L * stripe_fetch->stripe_idx;
+    uint32_t nbytes = ch->ubi_bdev->stripe_size_kb * 1024L;
 
-    int ret = io_uring_peek_cqe(ring, &cqe);
-    if (ret == -EAGAIN) {
-        return 0;
-    } else if (ret != 0) {
-        UBI_ERRLOG(ch->ubi_bdev, "io_uring_peek_cqe: %s\n", strerror(-ret));
-        return -1;
-    }
-
-    struct stripe_fetch *stripe_fetch = io_uring_cqe_get_data(cqe);
-    uint64_t offset =
-        ch->ubi_bdev->stripe_size_mb * 1024L * 1024L * stripe_fetch->stripe_idx;
-    uint32_t nbytes = ch->ubi_bdev->stripe_size_mb * 1024L * 1024L;
-
-    if (cqe->res < 0) {
+    if (res < 0) {
         UBI_ERRLOG(ch->ubi_bdev,
                    "fetching stripe %d failed while checking cqe->res: %s\n",
-                   stripe_fetch->stripe_idx, strerror(-cqe->res));
+                   stripe_fetch->stripe_idx, strerror(-res));
         ubi_fail_stripe_fetch(stripe_fetch);
         return -1;
     }
-
-    /* Mark the completion as seen. */
-    io_uring_cqe_seen(ring, cqe);
 
     /*
      * Now that we have read the stripe and have it in memory, write it to the
@@ -67,9 +57,9 @@ int ubi_complete_fetch_stripe(struct ubi_io_channel *ch) {
     struct ubi_bdev *ubi_bdev = ch->ubi_bdev;
     struct ubi_base_bdev_info *base_info = &ubi_bdev->base_bdev_info;
 
-    ret = spdk_bdev_write(base_info->desc, ch->base_channel, stripe_fetch->buf,
-                          offset + UBI_METADATA_SIZE, nbytes, write_stripe_io_completion,
-                          stripe_fetch);
+    int ret = spdk_bdev_write(base_info->desc, ch->base_channel,
+                              stripe_fetch->buf_aligned, offset + UBI_METADATA_SIZE,
+                              nbytes, write_stripe_io_completion, stripe_fetch);
     if (ret != 0) {
         UBI_ERRLOG(ch->ubi_bdev, "fetching stripe %d failed, spdk_bdev_write error: %s\n",
                    stripe_fetch->stripe_idx, strerror(-ret));

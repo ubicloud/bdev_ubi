@@ -15,9 +15,10 @@
 
 #define UBI_METADATA_SIZE 8388608
 
-// support images upto 1TB = 2^40 (assuming 1MB stripe size)
-#define UBI_MAX_STRIPES (1024 * 1024)
-#define UBI_STRIPE_SIZE_MAX 8
+// support images upto 2TB = 2^40 (assuming 1MB stripe size)
+#define UBI_MAX_STRIPES (2 * 1024 * 1024)
+#define UBI_STRIPE_SIZE_MIN 64
+#define UBI_STRIPE_SIZE_MAX 1024
 
 #define UBI_PATH_LEN 1024
 
@@ -27,7 +28,10 @@
 #define UBI_VERSION_MINOR 1
 
 #define UBI_MAX_ACTIVE_STRIPE_FETCHES 8
+#define UBI_MAX_CONCURRENT_READS 24
 #define UBI_FETCH_QUEUE_SIZE 32768
+// UBI_URING_QUEUE_SIZE = UBI_MAX_ACTIVE_STRIPE_FETCHES + UBI_MAX_CONCURRENT_READS
+#define UBI_URING_QUEUE_SIZE 32
 
 /*
  * On-disk metadata for a ubi bdev.
@@ -39,16 +43,16 @@ struct ubi_metadata {
     uint8_t versionMajor[2];
     uint8_t versionMinor[2];
 
-    uint8_t stripe_size_mb;
+    uint8_t stripe_size_kb;
 
     /*
-     * Currently stripe_headers[i] will be either 0 or 1, but reserve 31 more
+     * Currently stripe_headers[i] will be either 0 or 1, but reserve 16 more
      * bits per stripe for future extension.
      */
-    uint8_t stripe_headers[UBI_MAX_STRIPES][4];
+    uint8_t stripe_headers[UBI_MAX_STRIPES][2];
 
     /* Unused space reserved for future extension. */
-    uint8_t padding[UBI_METADATA_SIZE - UBI_MAGIC_SIZE - UBI_MAX_STRIPES * 4 - 5];
+    uint8_t padding[UBI_METADATA_SIZE - UBI_MAGIC_SIZE - UBI_MAX_STRIPES * 2 - 5];
 };
 
 /*
@@ -80,12 +84,15 @@ struct ubi_bdev {
     struct ubi_base_bdev_info base_bdev_info;
 
     char image_path[UBI_PATH_LEN];
-    uint32_t stripe_size_mb;
+    uint32_t stripe_size_kb;
     uint32_t stripe_block_count;
     uint32_t stripe_shift;
     uint32_t data_offset_blocks;
     uint64_t image_block_count;
+    uint32_t alignment_bytes;
     bool no_sync;
+    bool copy_on_read;
+    bool directio;
 
     enum stripe_status stripe_status[UBI_MAX_STRIPES];
 
@@ -103,10 +110,33 @@ struct ubi_bdev {
     TAILQ_ENTRY(ubi_bdev) tailq;
 };
 
+enum ubi_io_type { UBI_BDEV_IO, UBI_STRIPE_FETCH };
+
+struct ubi_io_op {
+    enum ubi_io_type type;
+};
+
+/*
+ * per I/O operation state.
+ */
+struct ubi_bdev_io {
+    struct ubi_io_op op;
+
+    struct ubi_bdev *ubi_bdev;
+    struct ubi_io_channel *ubi_ch;
+
+    uint64_t block_offset;
+    uint64_t block_count;
+
+    uint64_t stripes_fetched;
+};
+
 /*
  * State for a stripe fetch operation.
  */
 struct stripe_fetch {
+    struct ubi_io_op op;
+
     /* Is this currently used for an ongoing stripe fetch? */
     bool active;
 
@@ -114,7 +144,8 @@ struct stripe_fetch {
     uint32_t stripe_idx;
 
     /* Where will the data be stored at? */
-    uint8_t buf[1024 * 1024 * UBI_STRIPE_SIZE_MAX];
+    uint8_t buf[1024 * UBI_STRIPE_SIZE_MAX + 8192];
+    uint8_t *buf_aligned;
 
     struct ubi_bdev *ubi_bdev;
 };
@@ -126,6 +157,12 @@ struct ubi_io_channel {
     struct ubi_bdev *ubi_bdev;
     struct spdk_poller *poller;
     struct spdk_io_channel *base_channel;
+
+    uint64_t blocks_read;
+    uint64_t blocks_written;
+    uint64_t stripes_fetched;
+
+    uint64_t active_reads;
 
     /*
      * Stripe fetches are initially queued in "stripe_fetch_queue". During each
@@ -143,22 +180,11 @@ struct ubi_io_channel {
     /* io_uring stuff */
     int image_file_fd;
     struct io_uring image_file_ring;
+    int has_reads;
+    int wait_cycles;
 
     /* queue pointer */
     TAILQ_HEAD(, spdk_bdev_io) io;
-};
-
-/*
- * per I/O operation state.
- */
-struct ubi_bdev_io {
-    struct ubi_bdev *ubi_bdev;
-    struct ubi_io_channel *ubi_ch;
-
-    uint64_t block_offset;
-    uint64_t block_count;
-
-    uint64_t stripes_fetched;
 };
 
 /* bdev_ubi_flush.c */
@@ -167,7 +193,8 @@ void ubi_submit_flush_request(struct ubi_bdev_io *ubi_io);
 /* bdev_ubi_stripe.c */
 void ubi_start_fetch_stripe(struct ubi_io_channel *base_ch,
                             struct stripe_fetch *stripe_fetch);
-int ubi_complete_fetch_stripe(struct ubi_io_channel *ch);
+int ubi_complete_fetch_stripe(struct ubi_io_channel *ch,
+                              struct stripe_fetch *stripe_fetch, int res);
 void enqueue_stripe(struct ubi_io_channel *ch, int stripe_idx);
 int dequeue_stripe(struct ubi_io_channel *ch);
 bool stripe_queue_empty(struct ubi_io_channel *ch);

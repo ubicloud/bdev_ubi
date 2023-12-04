@@ -18,7 +18,9 @@
             "name": "ubi0",
             "base_bdev": "aio0",
             "image_path": "jammy.raw",
-            "stripe_size_mb": 1
+            "stripe_size_kb": 1024,
+            "copy_on_read": false,
+            "directio": true
           }
         }
       ]
