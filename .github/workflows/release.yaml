@@ -29,13 +29,15 @@ jobs:
           fetch-depth: 0
           submodules: 'recursive'
           path: 'spdk'
+      - name: Cpu Information
+        run: cat /proc/cpuinfo
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt install liburing-dev
           sudo spdk/scripts/pkgdep.sh
       - name: Configure
-        run: spdk/configure --with-crypto --with-vhost --prefix=$INSTALL_PREFIX --pydir=$INSTALL_PREFIX/python/lib --disable-unit-tests --disable-tests --disable-examples
+        run: spdk/configure --with-crypto --with-vhost --target-arch=znver3 --prefix=$INSTALL_PREFIX --pydir=$INSTALL_PREFIX/python/lib --disable-unit-tests --disable-tests --disable-examples
       - name: Build SPDK
         run: cd spdk && make -j16
       - name: Install

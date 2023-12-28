@@ -14,7 +14,7 @@ SPDK_DPDK_LIB := $(filter-out -lrte_net,$(SPDK_DPDK_LIB))
 SPDK_DPDK_LIB += -lrte_net
 
 # Compiler and linker flags
-CFLAGS := -D_GNU_SOURCE -Iinclude -Wall -g -O3 -mno-vpclmulqdq -I$(SPDK_PATH)/include
+CFLAGS := -D_GNU_SOURCE -Iinclude -Wall -g -O3 -I$(SPDK_PATH)/include
 LDFLAGS := -Wl,--whole-archive,-Bstatic $(SPDK_DPDK_LIB) -Wl,--no-whole-archive -luring -Wl,-Bdynamic $(SYS_LIB)
 
 # Automatically generate a list of source files (.c) and object files (.o)
