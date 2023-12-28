@@ -36,8 +36,10 @@ jobs:
           sudo apt-get update
           sudo apt install liburing-dev
           sudo spdk/scripts/pkgdep.sh
+      # Use znver2 to avoid VPCLMULQDQ which is not available on all our machines
+      # https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html
       - name: Configure
-        run: spdk/configure --with-crypto --with-vhost --target-arch=znver3 --prefix=$INSTALL_PREFIX --pydir=$INSTALL_PREFIX/python/lib --disable-unit-tests --disable-tests --disable-examples
+        run: spdk/configure --with-crypto --with-vhost --target-arch=znver2 --prefix=$INSTALL_PREFIX --pydir=$INSTALL_PREFIX/python/lib --disable-unit-tests --disable-tests --disable-examples
       - name: Build SPDK
         run: cd spdk && make -j16
       - name: Install
