@@ -3,7 +3,7 @@
 
 #include "spdk/stdinc.h"
 
-#define DEFAULT_STRIPE_SIZE_MB 1
+#define DEFAULT_STRIPE_SIZE_KB 1024
 
 typedef void (*spdk_delete_ubi_complete)(void *cb_arg, int bdeverrno);
 
@@ -17,8 +17,10 @@ struct spdk_ubi_bdev_opts {
     const char *name;
     const char *image_path;
     const char *base_bdev_name;
-    uint32_t stripe_size_mb;
+    uint32_t stripe_size_kb;
     bool no_sync;
+    bool copy_on_read;
+    bool directio;
 };
 
 struct ubi_create_context {

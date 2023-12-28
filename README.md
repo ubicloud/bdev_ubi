@@ -120,7 +120,11 @@ Parameters:
 * `name` (text, required): Name of the bdev to be created.
 * `image_path` (text, required): Path to the image file.
 * `base_bdev` (text, required): Name of base bdev.
-* `stripe_size_mb` (integer, optional): Stripe size in megabytes. Defaults to 1.
+* `stripe_size_kb` (integer, required): Stripe size in kibibytes.
+* `no_sync` (boolean, optional): Ignore sync requests. Defaults to false.
+* `copy_on_read` (boolean, optional): Fetch stripes for reads. Defaults to true.
+* `directio` (boolean, optional): Use O_DIRECT when opening the image file.
+  Defaults to true;
 
 **Note.** When creating the bdev for the first time, magic bits in the metadata
 section of base image should be zeroed. For unencrypted base bdev, truncate
@@ -141,9 +145,9 @@ First 8MB of base bdev is reserved for metadata. Metadata consists of:
 * Magic bytes (9 bytes): `BDEV_UBI\0`
 * Metadata version major (2 bytes)
 * Metadata version minor (2 bytes)
-* stripe_size_mb (1 byte)
-* Stripe headers: 4 byte per stripes. Currently it specifies whether a stripe
-  has been fetched from image or not. 31-bits are reserved for future extension.
+* stripe_size_kb (1 byte)
+* Stripe headers: 2 byte per stripes. Currently it specifies whether a stripe
+  has been fetched from image or not. 15-bits are reserved for future extension.
 * Padding to make the total size 8MB.
 
 Then at the 8MB offset the actual disk data starts.
