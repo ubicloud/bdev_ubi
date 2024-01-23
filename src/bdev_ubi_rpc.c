@@ -33,8 +33,8 @@ static const struct spdk_json_object_decoder rpc_construct_ubi_decoders[] = {
     {"no_sync", offsetof(struct rpc_construct_ubi, no_sync), spdk_json_decode_bool, true},
     {"copy_on_read", offsetof(struct rpc_construct_ubi, copy_on_read),
      spdk_json_decode_bool, true},
-    {"directio", offsetof(struct rpc_construct_ubi, directio),
-     spdk_json_decode_bool, true}};
+    {"directio", offsetof(struct rpc_construct_ubi, directio), spdk_json_decode_bool,
+     true}};
 
 static void bdev_ubi_create_done(void *cb_arg, struct spdk_bdev *bdev, int status) {
     struct spdk_jsonrpc_request *request = cb_arg;
