@@ -21,6 +21,8 @@ jobs:
         with:
           fetch-depth: 0
           submodules: 'recursive'
+      - name: Check formatting
+        run: .github/scripts/check-format.sh
       - name: Checkout SPDK and submodules
         uses: actions/checkout@v4
         with:

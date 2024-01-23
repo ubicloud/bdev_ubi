@@ -15,7 +15,8 @@ static void get_buf_for_read_cb(struct spdk_io_channel *ch, struct spdk_bdev_io 
                                 bool success);
 static int ubi_submit_read_request(struct ubi_bdev_io *ubi_io);
 static int ubi_submit_write_request(struct ubi_bdev_io *ubi_io);
-static void ubi_io_completion_cb(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg);
+static void ubi_io_completion_cb(struct spdk_bdev_io *bdev_io, bool success,
+                                 void *cb_arg);
 static void ubi_complete_io(struct ubi_bdev_io *ubi_io, bool success);
 static void ubi_init_ext_io_opts(struct spdk_bdev_io *bdev_io,
                                  struct spdk_bdev_ext_io_opts *opts);
@@ -364,23 +365,22 @@ static int ubi_submit_write_request(struct ubi_bdev_io *ubi_io) {
 /*
  * ubi_io_completion_cb cleans up and marks the I/O request as completed.
  */
-static void ubi_io_completion_cb(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
+static void ubi_io_completion_cb(struct spdk_bdev_io *bdev_io, bool success,
+                                 void *cb_arg) {
     spdk_bdev_free_io(bdev_io);
 
     struct ubi_bdev_io *ubi_io = cb_arg;
     ubi_complete_io(ubi_io, success);
 }
 
-static void ubi_complete_io(struct ubi_bdev_io *ubi_io, bool success)
-{
-    struct spdk_bdev_io * bdev_io = spdk_bdev_io_from_ctx(ubi_io);
+static void ubi_complete_io(struct ubi_bdev_io *ubi_io, bool success) {
+    struct spdk_bdev_io *bdev_io = spdk_bdev_io_from_ctx(ubi_io);
 
     if (bdev_io->type == SPDK_BDEV_IO_TYPE_READ)
         ubi_io->ubi_ch->active_reads--;
 
-    spdk_bdev_io_complete(bdev_io,
-                          success ? SPDK_BDEV_IO_STATUS_SUCCESS
-                                  : SPDK_BDEV_IO_STATUS_FAILED);
+    spdk_bdev_io_complete(bdev_io, success ? SPDK_BDEV_IO_STATUS_SUCCESS
+                                           : SPDK_BDEV_IO_STATUS_FAILED);
 }
 
 /*
