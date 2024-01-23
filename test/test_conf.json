@@ -1,0 +1,28 @@
+{
+  "subsystems": [
+    {
+      "subsystem": "bdev",
+      "config": [
+        {
+          "method": "bdev_malloc_create",
+          "params": {
+            "name": "malloc0",
+            "block_size": 512,
+            "num_blocks": 204800
+          }
+        },
+        {
+          "method": "bdev_ubi_create",
+          "params": {
+            "name": "ubi0",
+            "base_bdev": "malloc0",
+            "image_path": "build/bin/test_image.raw",
+            "stripe_size_kb": 1024,
+            "copy_on_read": false,
+            "directio": true
+          }
+        }
+      ]
+    }
+  ]
+}

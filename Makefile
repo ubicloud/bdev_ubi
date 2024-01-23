@@ -1,6 +1,7 @@
 # Source files and object files
 SRC_DIR := src
 APP_DIR := app
+TEST_DIR := test
 OBJ_DIR := build/obj
 BIN_DIR := build/bin
 
@@ -23,14 +24,16 @@ endif
 SRCS := $(wildcard $(SRC_DIR)/*.c)
 OBJS := $(SRCS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 
-all: $(BIN_DIR)/vhost_ubi
+all: $(BIN_DIR)/vhost_ubi $(BIN_DIR)/test_ubi $(BIN_DIR)/test_image.raw
 
-# Link object files to create the final executable, and place it in build/bin
 $(BIN_DIR)/vhost_ubi: $(OBJS) $(OBJ_DIR)/vhost_ubi.o
 	@mkdir -p $(BIN_DIR)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-# Compile .c to .o, place object files in build/obj
+$(BIN_DIR)/test_ubi: $(OBJS) $(OBJ_DIR)/test_ubi.o
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -38,6 +41,16 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 $(OBJ_DIR)/%.o: $(APP_DIR)/%.c
 	@mkdir -p $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJ_DIR)/%.o: $(TEST_DIR)/%.c
+	@mkdir -p $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BIN_DIR)/test_image.raw:
+	dd if=/dev/random of=$@ bs=1048576 count=40
+
+check:
+	sudo ./build/bin/test_ubi --cpumask [0,1,2] --json test/test_conf.json
 
 # Clean up build artifacts
 clean:

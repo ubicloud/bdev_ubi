@@ -51,6 +51,10 @@ jobs:
         run: |
           SPDK_PATH=$INSTALL_PREFIX make
           cp build/bin/vhost_ubi $INSTALL_PREFIX/bin/
+      - name: Run tests
+        run: |
+          sudo spdk/scripts/setup.sh
+          SPDK_PATH=$INSTALL_PREFIX make check
       - name: Package
         run: |
           cd $INSTALL_PREFIX/..
