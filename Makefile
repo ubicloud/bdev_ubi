@@ -4,6 +4,7 @@ APP_DIR := app
 OBJ_DIR := build/obj
 BIN_DIR := build/bin
 
+ifneq ($(MAKECMDGOALS),format)
 PKG_CONFIG_PATH = $(SPDK_PATH)/lib/pkgconfig
 SPDK_DPDK_LIB := $(shell PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" pkg-config --libs spdk_event spdk_event_vhost_blk spdk_event_bdev spdk_event_scheduler spdk_env_dpdk)
 SYS_LIB := $(shell PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" pkg-config --libs --static spdk_syslibs)
@@ -16,6 +17,7 @@ SPDK_DPDK_LIB += -lrte_net
 # Compiler and linker flags
 CFLAGS := -D_GNU_SOURCE -Iinclude -Wall -g -O3 -I$(SPDK_PATH)/include
 LDFLAGS := -Wl,--whole-archive,-Bstatic $(SPDK_DPDK_LIB) -Wl,--no-whole-archive -luring -Wl,-Bdynamic $(SYS_LIB)
+endif
 
 # Automatically generate a list of source files (.c) and object files (.o)
 SRCS := $(wildcard $(SRC_DIR)/*.c)
