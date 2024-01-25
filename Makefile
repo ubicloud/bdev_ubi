@@ -24,13 +24,17 @@ endif
 SRCS := $(wildcard $(SRC_DIR)/*.c)
 OBJS := $(SRCS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 
-all: $(BIN_DIR)/vhost_ubi $(BIN_DIR)/test_ubi $(BIN_DIR)/test_image.raw
+all: $(BIN_DIR)/vhost_ubi $(BIN_DIR)/test_ubi $(BIN_DIR)/memcheck_ubi $(BIN_DIR)/test_image.raw $(BIN_DIR)/test_disk.raw
 
 $(BIN_DIR)/vhost_ubi: $(OBJS) $(OBJ_DIR)/vhost_ubi.o
 	@mkdir -p $(BIN_DIR)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(BIN_DIR)/test_ubi: $(OBJS) $(OBJ_DIR)/test_ubi.o
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+$(BIN_DIR)/memcheck_ubi: $(OBJS) $(OBJ_DIR)/memcheck_ubi.o
 	@mkdir -p $(BIN_DIR)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
@@ -49,8 +53,15 @@ $(OBJ_DIR)/%.o: $(TEST_DIR)/%.c
 $(BIN_DIR)/test_image.raw:
 	dd if=/dev/random of=$@ bs=1048576 count=40
 
+$(BIN_DIR)/test_disk.raw: $(BIN_DIR)/test_image.raw
+	cp $< $@
+	truncate --size 100M $@
+
 check:
 	sudo ./build/bin/test_ubi --cpumask [0,1,2] --json test/test_conf.json
+
+valgrind:
+	sudo valgrind ./build/bin/memcheck_ubi --cpumask [0] --json test/test_conf.json
 
 # Clean up build artifacts
 clean:
