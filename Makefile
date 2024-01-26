@@ -4,6 +4,7 @@ APP_DIR := app
 TEST_DIR := test
 OBJ_DIR := build/obj
 BIN_DIR := build/bin
+TEST_BDEVS := --bdev ubi0 --bdev ubi_nosync --bdev ubi_directio --bdev ubi_copy_on_read
 
 ifneq ($(MAKECMDGOALS),format)
 PKG_CONFIG_PATH = $(SPDK_PATH)/lib/pkgconfig
@@ -18,6 +19,10 @@ SPDK_DPDK_LIB += -lrte_net
 # Compiler and linker flags
 CFLAGS := -D_GNU_SOURCE -Iinclude -Wall -g -O3 -I$(SPDK_PATH)/include
 LDFLAGS := -Wl,--whole-archive,-Bstatic $(SPDK_DPDK_LIB) -Wl,--no-whole-archive -luring -Wl,-Bdynamic $(SYS_LIB)
+endif
+
+ifeq ($(COVERAGE),true)
+    CFLAGS += -fprofile-arcs -ftest-coverage
 endif
 
 # Automatically generate a list of source files (.c) and object files (.o)
@@ -58,14 +63,18 @@ $(BIN_DIR)/test_disk.raw: $(BIN_DIR)/test_image.raw
 	truncate --size 100M $@
 
 check:
-	sudo ./build/bin/test_ubi --cpumask [0,1,2] --json test/test_conf.json
+	sudo ./build/bin/test_ubi --cpumask [0,1,2] --json test/test_conf.json $(TEST_BDEVS)
 
 valgrind:
-	sudo valgrind ./build/bin/memcheck_ubi --cpumask [0] --json test/test_conf.json
+	sudo valgrind ./build/bin/memcheck_ubi --cpumask [0] --json test/test_conf.json $(TEST_BDEVS)
+
+coverage:
+	lcov --capture --directory . --exclude=`pwd`/test/'*.c' --no-external --output-file coverage.info > /dev/null
+	genhtml coverage.info --output-directory coverage_report
 
 # Clean up build artifacts
 clean:
-	@rm -rf $(OBJ_DIR) $(BIN_DIR)
+	@rm -rf $(OBJ_DIR) $(BIN_DIR) coverage.info coverage_report
 
 # Automatically format source files
 format:

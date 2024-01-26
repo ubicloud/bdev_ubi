@@ -14,11 +14,14 @@
 
 #define BLOCK_SIZE 512
 #define MAX_OPS 5000
+#define MAX_BDEVS 10
 
 struct {
-    char *bdev_name;
+    char *bdev_names[MAX_BDEVS];
+    int n_bdevs;
 } g_opts;
 
+size_t g_bdevs_tested = 0;
 struct test_state {
     struct spdk_bdev_desc *bdev_desc;
     struct spdk_io_channel *ch;
@@ -43,6 +46,7 @@ static struct option g_cmdline_opts[] = {{
                                          {.name = NULL}};
 
 static void enqueue_io_ops(void *arg);
+static void open_bdev(void *arg);
 
 #define continue_with_fn(fn)                                                             \
     {                                                                                    \
@@ -70,8 +74,6 @@ static void fail_tests(void *arg) {
 }
 
 static void succeed_tests(void *arg) {
-    close_bdev();
-
     SPDK_NOTICELOG("Tests succeeded.\n");
     spdk_app_stop(0);
 }
@@ -86,9 +88,11 @@ static void io_completion_cb(struct spdk_bdev_io *bdev_io, bool success, void *a
     if (g_test_state.n_ops_finished != g_test_state.n_ops_queued)
         return;
 
-    // reached target op count
-    if (g_test_state.n_ops_finished >= g_test_state.n_ops_target)
-        continue_with_fn(succeed_tests);
+    // reached target op count. continue with testing the next bdev.
+    if (g_test_state.n_ops_finished >= g_test_state.n_ops_target) {
+        close_bdev();
+        continue_with_fn(open_bdev);
+    }
 
     continue_with_fn(enqueue_io_ops);
 }
@@ -144,7 +148,14 @@ static void enqueue_io_ops(void *arg) {
 }
 
 static void open_bdev(void *arg) {
-    char *name = g_opts.bdev_name ? g_opts.bdev_name : DEFAULT_BDEV_NAME;
+    if (g_bdevs_tested >= g_opts.n_bdevs) {
+        continue_with_fn(succeed_tests);
+    }
+
+    char *name = g_opts.bdev_names[g_bdevs_tested++];
+    memset(&g_test_state, 0, sizeof(g_test_state));
+    g_test_state.n_ops_target = MAX_OPS;
+
     int rc = spdk_bdev_open_ext(name, true, ubi_event_cb, NULL, &g_test_state.bdev_desc);
     if (rc < 0) {
         SPDK_ERRLOG("Could not open bdev %s: %s\n", name, strerror(-rc));
@@ -160,18 +171,18 @@ static void open_bdev(void *arg) {
     continue_with_fn(enqueue_io_ops);
 };
 
-static void start_tests(void *arg) {
-    memset(&g_test_state, 0, sizeof(g_test_state));
-    g_test_state.n_ops_target = MAX_OPS;
-    continue_with_fn(open_bdev);
-}
+static void start_tests(void *arg) { continue_with_fn(open_bdev); }
 
 static void usage(void) { printf("  -bdev Block device to be used for testing.\n"); }
 
 static int parse_arg(int argc, char *argv) {
     switch (argc) {
     case MEMCHECK_OPTION_BDEV:
-        g_opts.bdev_name = strdup(argv);
+        if (g_opts.n_bdevs >= MAX_BDEVS) {
+            fprintf(stderr, "Too many bdevs.\n");
+            exit(-1);
+        }
+        g_opts.bdev_names[g_opts.n_bdevs++] = strdup(argv);
         break;
     default:
         return -EINVAL;
@@ -191,12 +202,19 @@ int main(int argc, char **argv) {
         exit(rc);
     }
 
+    if (g_opts.n_bdevs == 0) {
+        g_opts.n_bdevs = 1;
+        g_opts.bdev_names[0] = strdup(DEFAULT_BDEV_NAME);
+    }
+
     rc = spdk_app_start(&opts, start_tests, NULL);
     if (rc) {
         SPDK_ERRLOG("Error occured while testing bdev_ubi.\n");
     }
 
-    free(g_opts.bdev_name);
+    for (int i = 0; i < g_opts.n_bdevs; i++)
+        free(g_opts.bdev_names[i]);
+
     spdk_app_fini();
 
     return rc;

@@ -1,3 +1,5 @@
 build/*
 .vscode/*
 valgrind.log
+coverage.info
+coverage_report/*
