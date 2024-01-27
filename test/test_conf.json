@@ -4,11 +4,47 @@
       "subsystem": "bdev",
       "config": [
         {
+          "method": "bdev_ubi_create",
+          "params": {
+            "name": "ubi_with_missing_args"
+          }
+        },
+        {
           "method": "bdev_malloc_create",
           "params": {
             "name": "malloc0",
             "block_size": 512,
             "num_blocks": 204800
+          }
+        },
+        {
+          "method": "bdev_ubi_create",
+          "params": {
+            "name": "ubi_to_be_deleted",
+            "base_bdev": "malloc0",
+            "image_path": "build/bin/test_image.raw",
+            "stripe_size_kb": 1024,
+            "copy_on_read": false,
+            "directio": false,
+            "no_sync": false
+          }
+        },
+        {
+          "method": "bdev_ubi_delete",
+          "params": {
+            "name": "invalid bdev name"
+          }
+        },
+        {
+          "method": "bdev_ubi_delete",
+          "params": {
+            "invalid_param": 1
+          }
+        },
+        {
+          "method": "bdev_ubi_delete",
+          "params": {
+            "name": "ubi_to_be_deleted"
           }
         },
         {
