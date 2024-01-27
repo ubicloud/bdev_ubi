@@ -19,7 +19,68 @@
             "image_path": "build/bin/test_image.raw",
             "stripe_size_kb": 1024,
             "copy_on_read": false,
-            "directio": true
+            "directio": false,
+            "no_sync": false
+          }
+        },
+        {
+          "method": "bdev_malloc_create",
+          "params": {
+            "name": "malloc1",
+            "block_size": 512,
+            "num_blocks": 204800
+          }
+        },
+        {
+          "method": "bdev_ubi_create",
+          "params": {
+            "name": "ubi_copy_on_read",
+            "base_bdev": "malloc1",
+            "image_path": "build/bin/test_image.raw",
+            "stripe_size_kb": 1024,
+            "copy_on_read": true,
+            "directio": false,
+            "no_sync": false
+          }
+        },
+        {
+          "method": "bdev_malloc_create",
+          "params": {
+            "name": "malloc2",
+            "block_size": 512,
+            "num_blocks": 204800
+          }
+        },
+        {
+          "method": "bdev_ubi_create",
+          "params": {
+            "name": "ubi_directio",
+            "base_bdev": "malloc2",
+            "image_path": "build/bin/test_image.raw",
+            "stripe_size_kb": 1024,
+            "copy_on_read": false,
+            "directio": true,
+            "no_sync": false
+          }
+        },
+        {
+          "method": "bdev_malloc_create",
+          "params": {
+            "name": "malloc3",
+            "block_size": 512,
+            "num_blocks": 204800
+          }
+        },
+        {
+          "method": "bdev_ubi_create",
+          "params": {
+            "name": "ubi_nosync",
+            "base_bdev": "malloc3",
+            "image_path": "build/bin/test_image.raw",
+            "stripe_size_kb": 1024,
+            "copy_on_read": false,
+            "directio": false,
+            "no_sync": true
           }
         },
         {

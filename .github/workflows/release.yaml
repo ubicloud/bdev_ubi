@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install liburing-dev
+          sudo apt install liburing-dev lcov
           sudo spdk/scripts/pkgdep.sh
       - name: Configure
         run: spdk/configure --with-crypto --with-vhost --target-arch=corei7 --prefix=$INSTALL_PREFIX --pydir=$INSTALL_PREFIX/python/lib --disable-unit-tests --disable-tests --disable-examples
@@ -47,14 +47,20 @@ jobs:
           cp -R python/* $INSTALL_PREFIX/python/
           mkdir $INSTALL_PREFIX/scripts
           cp scripts/rpc.py $INSTALL_PREFIX/scripts
-      - name: Build bdev_ubi
-        run: |
-          SPDK_PATH=$INSTALL_PREFIX make
-          cp build/bin/vhost_ubi $INSTALL_PREFIX/bin/
-      - name: Run tests
+      - name: Run tests and check coverage
         run: |
           sudo spdk/scripts/setup.sh
-          SPDK_PATH=$INSTALL_PREFIX make check
+          export SPDK_PATH=$INSTALL_PREFIX
+          make clean
+          make COVERAGE=true
+          make check
+          .github/scripts/check-coverage.sh
+      - name: Build bdev_ubi
+        run: |
+          export SPDK_PATH=$INSTALL_PREFIX
+          make clean
+          make
+          cp build/bin/vhost_ubi $INSTALL_PREFIX/bin/
       - name: Package
         run: |
           cd $INSTALL_PREFIX/..

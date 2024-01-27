@@ -9,17 +9,25 @@
 #include "spdk/vmd.h"
 #include <stdio.h>
 
-#define BDEV_NAME "ubi0"
+#define DEFAULT_BDEV_NAME "ubi0"
 #define IMAGE_PATH "build/bin/test_image.raw"
 #define MAX_BLOCK_SIZE 4096
-#define IMAGE_SIZE (40 * 1024 * 1024)
+#define MAX_BDEVS 10
 
+struct {
+    char *bdev_names[MAX_BDEVS];
+    int n_bdevs;
+} g_opts;
+
+size_t g_bdevs_tested = 0;
 struct test_state {
     struct spdk_bdev_desc *bdev_desc;
     struct spdk_io_channel *ch;
     FILE *image_file;
 
     uint32_t blocklen;
+    uint64_t blockcnt;
+    uint64_t image_size;
     uint64_t n_image_blocks;
 
     uint32_t n_tests;
@@ -34,21 +42,36 @@ struct ubi_io_request {
     bool success;
 };
 
+enum dd_cmdline_opts {
+    MEMCHECK_OPTION_BDEV = 0x1000,
+};
+
+static struct option g_cmdline_opts[] = {{
+                                             .name = "bdev",
+                                             .has_arg = 1,
+                                             .flag = NULL,
+                                             .val = MEMCHECK_OPTION_BDEV,
+                                         },
+                                         {.name = NULL}};
+
 /* forward declarations */
 static void stop_init_thread(void *arg);
 
-static void open_bdev(void *arg);
-static void close_bdev(void *arg);
+static void open_io_channel(void *arg);
+static void close_io_channel(void *arg);
 static void exit_io_thread(void *arg);
 static void ubi_event_cb(enum spdk_bdev_event_type type, struct spdk_bdev *bdev,
                          void *event_ctx);
 static void ubi_bdev_write(void *arg);
 static void ubi_bdev_read(void *arg);
+static void ubi_bdev_flush(void *arg);
 static void io_completion_cb(struct spdk_bdev_io *bdev_io, bool success, void *arg);
 
 static void run_ut_thread(void *arg);
+static void run_bdev_tests(struct test_state *state, const char *name);
 static bool test_read(struct test_state *state, uint32_t start, uint32_t count);
 static bool test_write(struct test_state *state, uint32_t start, uint32_t count);
+static bool test_random_ops(struct test_state *state, uint32_t count);
 static bool verify_image_block(struct test_state *state, uint64_t block, char *buf);
 static bool file_size(FILE *f, uint64_t *out);
 
@@ -81,34 +104,21 @@ static void exit_io_thread(void *arg) {
     wake_ut_thread();
 }
 
-static void open_bdev(void *arg) {
+static void open_io_channel(void *arg) {
     struct test_state *state = arg;
-    int rc;
-    rc = spdk_bdev_open_ext(BDEV_NAME, true, ubi_event_cb, NULL, &state->bdev_desc);
-    if (rc < 0) {
-        SPDK_ERRLOG("Could not open bdev %s: %s\n", BDEV_NAME, strerror(-rc));
-        goto done;
-    }
 
     state->ch = spdk_bdev_get_io_channel(state->bdev_desc);
     if (state->ch == NULL) {
         SPDK_ERRLOG("Could not get I/O channel: %s\n", strerror(ENOMEM));
-        goto done;
     }
 
-    struct spdk_bdev *bdev = spdk_bdev_desc_get_bdev(state->bdev_desc);
-    state->blocklen = bdev->blocklen;
-
-done:
     wake_ut_thread();
 }
 
-static void close_bdev(void *arg) {
+static void close_io_channel(void *arg) {
     struct test_state *state = arg;
     if (state->ch)
         spdk_put_io_channel(state->ch);
-    if (state->bdev_desc)
-        spdk_bdev_close(state->bdev_desc);
 
     wake_ut_thread();
 }
@@ -146,6 +156,20 @@ static void ubi_bdev_read(void *arg) {
     }
 }
 
+static void ubi_bdev_flush(void *arg) {
+    struct ubi_io_request *req = arg;
+
+    // Reset success. This will be set in the completion callback.
+    req->success = false;
+
+    int rc = spdk_bdev_flush_blocks(req->state->bdev_desc, req->state->ch, req->block_idx,
+                                    1, io_completion_cb, req);
+
+    if (rc) {
+        wake_ut_thread();
+    }
+}
+
 static void io_completion_cb(struct spdk_bdev_io *bdev_io, bool success, void *arg) {
     struct ubi_io_request *req = arg;
     req->success = success;
@@ -162,28 +186,50 @@ static void run_ut_thread(void *arg) {
     memset(&g_state, 0, sizeof(g_state));
     struct test_state *state = &g_state;
 
-    execute_spdk_function(open_bdev, state);
-    if (state->bdev_desc == NULL || state->ch == NULL) {
-        state->n_failures++;
-        goto done;
-    }
-
     state->image_file = fopen(IMAGE_PATH, "r");
     if (state->image_file == NULL) {
         rc = errno;
         SPDK_ERRLOG("Could not open %s: %s\n", IMAGE_PATH, strerror(-rc));
         state->n_failures++;
-        goto done;
+        goto cleanup;
     }
 
-    uint64_t image_size = 0;
-    if (!file_size(state->image_file, &image_size)) {
+    if (!file_size(state->image_file, &state->image_size)) {
         state->n_failures++;
-        goto done;
+        goto cleanup;
     }
 
-    state->n_image_blocks = image_size / state->blocklen;
-    SPDK_NOTICELOG("Image block count: %lu.\n", state->n_image_blocks);
+    for (size_t i = 0; i < g_opts.n_bdevs; i++) {
+        SPDK_NOTICELOG("Testing %s\n", g_opts.bdev_names[i]);
+        run_bdev_tests(state, g_opts.bdev_names[i]);
+    }
+
+cleanup:
+    if (state->image_file)
+        fclose(state->image_file);
+
+    spdk_thread_send_msg(g_init_thread, stop_init_thread, state);
+    spdk_thread_exit(g_ut_thread);
+}
+
+static void run_bdev_tests(struct test_state *state, const char *name) {
+    int rc = spdk_bdev_open_ext(name, true, ubi_event_cb, NULL, &state->bdev_desc);
+    if (rc < 0) {
+        SPDK_ERRLOG("Could not open bdev %s: %s\n", name, strerror(-rc));
+        return;
+    }
+
+    struct spdk_bdev *bdev = spdk_bdev_desc_get_bdev(state->bdev_desc);
+    state->blocklen = bdev->blocklen;
+    state->blockcnt = bdev->blockcnt;
+    state->n_image_blocks = state->image_size / state->blocklen;
+
+    execute_spdk_function(open_io_channel, state);
+    if (state->bdev_desc == NULL || state->ch == NULL) {
+        state->n_failures++;
+        spdk_bdev_close(state->bdev_desc);
+        return;
+    }
 
 #define RUN_TEST(x)                                                                      \
     if (!(x)) {                                                                          \
@@ -198,15 +244,11 @@ static void run_ut_thread(void *arg) {
     RUN_TEST(test_write(state, 20, 100));
     // write 100 blocks to the non-image addresses
     RUN_TEST(test_write(state, state->n_image_blocks + 2, 100));
+    // Some random io
+    RUN_TEST(test_random_ops(state, 50));
 
-    execute_spdk_function(close_bdev, state);
-
-done:
-    if (state->image_file)
-        fclose(state->image_file);
-
-    spdk_thread_send_msg(g_init_thread, stop_init_thread, state);
-    spdk_thread_exit(g_ut_thread);
+    execute_spdk_function(close_io_channel, state);
+    spdk_bdev_close(state->bdev_desc);
 }
 
 static bool test_read(struct test_state *state, uint32_t start, uint32_t count) {
@@ -260,6 +302,30 @@ static bool test_write(struct test_state *state, uint32_t start, uint32_t count)
             SPDK_ERRLOG("Read data didn't match written data.\n");
             return false;
         }
+    }
+
+    return true;
+}
+
+static bool test_random_ops(struct test_state *state, uint32_t count) {
+    struct ubi_io_request req;
+    req.state = state;
+    for (size_t i = 0; i < count; i++) {
+        int type = rand() % 3;
+        req.block_idx = rand() % state->blockcnt;
+        switch (type) {
+        case 0:
+            execute_spdk_function(ubi_bdev_read, &req);
+            break;
+        case 1:
+            execute_spdk_function(ubi_bdev_write, &req);
+            break;
+        case 2:
+            execute_spdk_function(ubi_bdev_flush, &req);
+            break;
+        }
+        if (!req.success)
+            return false;
     }
 
     return true;
@@ -343,6 +409,23 @@ static void stop_init_thread(void *arg) {
     spdk_app_stop(state->n_failures);
 }
 
+static void usage(void) { printf("  -bdev Block device to be used for testing.\n"); }
+
+static int parse_arg(int argc, char *argv) {
+    switch (argc) {
+    case MEMCHECK_OPTION_BDEV:
+        if (g_opts.n_bdevs >= MAX_BDEVS) {
+            fprintf(stderr, "Too many bdevs.\n");
+            exit(-1);
+        }
+        g_opts.bdev_names[g_opts.n_bdevs++] = strdup(argv);
+        break;
+    default:
+        return -EINVAL;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv) {
     int rc;
     struct spdk_app_opts opts = {};
@@ -350,15 +433,23 @@ int main(int argc, char **argv) {
     opts.name = "test_ubi";
     opts.reactor_mask = "0x1";
 
-    rc = spdk_app_parse_args(argc, argv, &opts, NULL, NULL, NULL, NULL);
+    rc = spdk_app_parse_args(argc, argv, &opts, NULL, g_cmdline_opts, parse_arg, usage);
     if (rc != SPDK_APP_PARSE_ARGS_SUCCESS) {
         exit(rc);
+    }
+
+    if (g_opts.n_bdevs == 0) {
+        g_opts.n_bdevs = 1;
+        g_opts.bdev_names[0] = strdup(DEFAULT_BDEV_NAME);
     }
 
     rc = spdk_app_start(&opts, test_ubi_run, NULL);
     if (rc) {
         SPDK_ERRLOG("Error occured while testing bdev_ubi.\n");
     }
+
+    for (int i = 0; i < g_opts.n_bdevs; i++)
+        free(g_opts.bdev_names[i]);
 
     spdk_app_fini();
 
