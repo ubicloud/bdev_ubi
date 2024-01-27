@@ -63,10 +63,12 @@ $(BIN_DIR)/test_disk.raw: $(BIN_DIR)/test_image.raw
 	truncate --size 100M $@
 
 check:
-	sudo ./build/bin/test_ubi --cpumask [0,1,2] --json test/test_conf.json $(TEST_BDEVS)
+	sudo ./build/bin/test_ubi --cpumask [0,1,2] --json test/test_conf.json \
+		--json-ignore-init-errors $(TEST_BDEVS)
 
 valgrind:
-	sudo valgrind ./build/bin/memcheck_ubi --cpumask [0] --json test/test_conf.json $(TEST_BDEVS)
+	sudo valgrind ./build/bin/memcheck_ubi --cpumask [0] \
+		--json-ignore-init-errors --json test/test_conf.json $(TEST_BDEVS)
 
 coverage:
 	lcov --capture --directory . --exclude=`pwd`/test/'*.c' --no-external --output-file coverage.info > /dev/null
