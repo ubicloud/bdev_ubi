@@ -60,7 +60,7 @@ jobs:
           export SPDK_PATH=$INSTALL_PREFIX
           make clean
           make
-          cp build/bin/vhost_ubi $INSTALL_PREFIX/bin/
+          cp bin/vhost_ubi $INSTALL_PREFIX/bin/
       - name: Package
         run: |
           cd $INSTALL_PREFIX/..

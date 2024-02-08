@@ -1,5 +1,9 @@
 build/*
+bin/*
 .vscode/*
+*.o
+*.gcda
+*.gcno
 valgrind.log
 coverage.info
 coverage_report/*
