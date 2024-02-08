@@ -22,7 +22,7 @@
           "params": {
             "name": "ubi_to_be_deleted",
             "base_bdev": "malloc0",
-            "image_path": "build/bin/test_image.raw",
+            "image_path": "bin/test/test_image.raw",
             "stripe_size_kb": 1024,
             "copy_on_read": false,
             "directio": false,
@@ -52,7 +52,7 @@
           "params": {
             "name": "ubi0",
             "base_bdev": "malloc0",
-            "image_path": "build/bin/test_image.raw",
+            "image_path": "bin/test/test_image.raw",
             "stripe_size_kb": 1024,
             "copy_on_read": false,
             "directio": false,
@@ -72,7 +72,7 @@
           "params": {
             "name": "ubi_copy_on_read",
             "base_bdev": "malloc1",
-            "image_path": "build/bin/test_image.raw",
+            "image_path": "bin/test/test_image.raw",
             "stripe_size_kb": 1024,
             "copy_on_read": true,
             "directio": false,
@@ -92,7 +92,7 @@
           "params": {
             "name": "ubi_directio",
             "base_bdev": "malloc2",
-            "image_path": "build/bin/test_image.raw",
+            "image_path": "bin/test/test_image.raw",
             "stripe_size_kb": 1024,
             "copy_on_read": false,
             "directio": true,
@@ -112,7 +112,7 @@
           "params": {
             "name": "ubi_nosync",
             "base_bdev": "malloc3",
-            "image_path": "build/bin/test_image.raw",
+            "image_path": "bin/test/test_image.raw",
             "stripe_size_kb": 1024,
             "copy_on_read": false,
             "directio": false,
@@ -124,7 +124,7 @@
           "params": {
             "name": "aio0",
             "block_size": 512,
-            "filename": "build/bin/test_disk.raw"
+            "filename": "bin/test/test_disk.raw"
           }
         }
       ]
