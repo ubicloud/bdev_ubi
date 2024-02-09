@@ -3,14 +3,21 @@
 #define DEFAULT_BDEV_NAME "ubi0"
 
 enum dd_cmdline_opts {
-    MEMCHECK_OPTION_BDEV = 0x1000,
+    TEST_OPTION_BDEV = 0x1000,
+    TEST_OPTION_IMAGE_PATH = 0x1001,
 };
 
 static struct option g_cmdline_opts[] = {{
                                              .name = "bdev",
                                              .has_arg = 1,
                                              .flag = NULL,
-                                             .val = MEMCHECK_OPTION_BDEV,
+                                             .val = TEST_OPTION_BDEV,
+                                         },
+                                         {
+                                             .name = "image_path",
+                                             .has_arg = 1,
+                                             .flag = NULL,
+                                             .val = TEST_OPTION_IMAGE_PATH,
                                          },
                                          {.name = NULL}};
 
@@ -53,12 +60,15 @@ static void usage(void) { printf("  -bdev Block device to be used for testing.\n
 
 static int parse_arg(int argc, char *argv) {
     switch (argc) {
-    case MEMCHECK_OPTION_BDEV:
+    case TEST_OPTION_BDEV:
         if (g_opts.n_bdevs >= MAX_BDEVS) {
             fprintf(stderr, "Too many bdevs.\n");
             exit(-1);
         }
         g_opts.bdev_names[g_opts.n_bdevs++] = strdup(argv);
+        break;
+    case TEST_OPTION_IMAGE_PATH:
+        g_opts.image_path = strdup(argv);
         break;
     default:
         return -EINVAL;
@@ -71,7 +81,8 @@ int main(int argc, char **argv) {
     struct spdk_app_opts opts = {};
     spdk_app_opts_init(&opts, sizeof(opts));
     opts.name = "test_ubi";
-    opts.reactor_mask = "0x1";
+
+    memset(&g_opts, 0, sizeof(g_opts));
 
     rc = spdk_app_parse_args(argc, argv, &opts, NULL, g_cmdline_opts, parse_arg, usage);
     if (rc != SPDK_APP_PARSE_ARGS_SUCCESS) {
@@ -83,11 +94,17 @@ int main(int argc, char **argv) {
         g_opts.bdev_names[0] = strdup(DEFAULT_BDEV_NAME);
     }
 
+    if (g_opts.image_path == NULL) {
+        printf("Missing image_path\n");
+        return -1;
+    }
+
     rc = spdk_app_start(&opts, test_ubi_run, NULL);
     if (rc) {
         SPDK_ERRLOG("Error occured while testing bdev_ubi.\n");
     }
 
+    free(g_opts.image_path);
     for (int i = 0; i < g_opts.n_bdevs; i++)
         free(g_opts.bdev_names[i]);
 

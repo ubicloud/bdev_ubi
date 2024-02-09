@@ -22,14 +22,15 @@ $(TEST_BIN_DIR)/memcheck_ubi: $(TEST_DIR)/memcheck_ubi/*.c $(LIB_OBJS)
 	@mkdir -p $(@D)
 	@$(CC) $(CFLAGS) $? -o $@ $(LDFLAGS)
 
-$(TEST_BIN_DIR)/test_ubi: $(TEST_DIR)/test_ubi/*.c $(LIB_OBJS)
+$(TEST_BIN_DIR)/test_ubi: $(TEST_DIR)/test_ubi/*.c $(TEST_DIR)/test_ubi/tests/*.c $(LIB_OBJS)
 	$(info Building $@ ...)
 	@mkdir -p $(@D)
 	@$(CC) $(CFLAGS) -I$(TEST_DIR)/test_ubi $? -o $@ $(LDFLAGS)
 
 check: $(TEST_BIN_DIR)/test_ubi $(DATA_TARGETS)
 	sudo $(TEST_BIN_DIR)/test_ubi --cpumask [0,1,2] --json $(TEST_DIR)/test_conf.json \
-		--json-ignore-init-errors $(TEST_BDEVS)
+		--json-ignore-init-errors $(TEST_BDEVS) \
+		--image_path $(TEST_BIN_DIR)/test_image.raw
 
 valgrind: $(TEST_BIN_DIR)/memcheck_ubi $(DATA_TARGETS)
 	sudo valgrind $(TEST_BIN_DIR)/memcheck_ubi --cpumask [0] \
