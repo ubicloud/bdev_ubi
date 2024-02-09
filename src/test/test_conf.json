@@ -30,6 +30,18 @@
           }
         },
         {
+          "method": "bdev_ubi_create",
+          "params": {
+            "name": "ubi_on_already_claimed_bdev",
+            "base_bdev": "malloc0",
+            "image_path": "bin/test/test_image.raw",
+            "stripe_size_kb": 1024,
+            "copy_on_read": false,
+            "directio": false,
+            "no_sync": false
+          }
+        },
+        {
           "method": "bdev_ubi_delete",
           "params": {
             "name": "invalid bdev name"
@@ -125,6 +137,14 @@
             "name": "aio0",
             "block_size": 512,
             "filename": "bin/test/test_disk.raw"
+          }
+        },
+        {
+          "method": "bdev_malloc_create",
+          "params": {
+            "name": "free_base_bdev",
+            "block_size": 512,
+            "num_blocks": 204800
           }
         }
       ]

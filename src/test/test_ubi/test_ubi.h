@@ -34,7 +34,19 @@ struct test_opts {
 };
 
 /* init_thread.c */
+struct ubi_create_request {
+    struct spdk_ubi_bdev_opts opts;
+    bool success;
+};
+
+struct ubi_delete_request {
+    char *name;
+    bool success;
+};
+
 extern void stop_init_thread(void *arg);
+extern void init_thread_create_bdev_ubi(void *arg);
+extern void init_thread_delete_bdev_ubi(void *arg);
 
 /*
  * io_thread.c
@@ -44,11 +56,6 @@ struct ubi_io_request {
     uint64_t block_idx;
     struct test_bdev *bdev;
 
-    bool success;
-};
-
-struct ubi_create_request {
-    struct spdk_ubi_bdev_opts opts;
     bool success;
 };
 
@@ -62,14 +69,16 @@ extern void io_thread_flush(void *arg);
 /*
  * ut_thread.c
  */
-void execute_spdk_function(spdk_msg_fn fn, void *arg);
+extern void execute_spdk_function(spdk_msg_fn fn, void *arg);
+void execute_app_function(spdk_msg_fn fn, void *arg);
 extern void wake_ut_thread(void);
 extern void run_ut_thread(void *arg);
 
 /*
- * test_bdev_io.c
+ * tests
  */
-void test_bdev_io(const char *bdev_name, const char *image_path, int *n_tests,
-                  int *n_failures);
-
+extern void test_bdev_io(const char *bdev_name, const char *image_path, int *n_tests,
+                         int *n_failures);
+extern void test_bdev_recreate(const char *base_bdev, const char *image_path,
+                               int *n_tests, int *n_failures);
 #endif
