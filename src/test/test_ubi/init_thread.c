@@ -5,6 +5,7 @@
 enum dd_cmdline_opts {
     TEST_OPTION_BDEV = 0x1000,
     TEST_OPTION_IMAGE_PATH = 0x1001,
+    TEST_OPTION_FREE_BASE_BDEV = 0x1002,
 };
 
 static struct option g_cmdline_opts[] = {{
@@ -12,6 +13,12 @@ static struct option g_cmdline_opts[] = {{
                                              .has_arg = 1,
                                              .flag = NULL,
                                              .val = TEST_OPTION_BDEV,
+                                         },
+                                         {
+                                             .name = "free_base_bdev",
+                                             .has_arg = 1,
+                                             .flag = NULL,
+                                             .val = TEST_OPTION_FREE_BASE_BDEV,
                                          },
                                          {
                                              .name = "image_path",
@@ -56,6 +63,34 @@ static void test_ubi_run(void *arg1) {
 
 void stop_init_thread(void *arg) { spdk_app_stop(arg == NULL ? 0 : -1); }
 
+static void bdev_ubi_create_done_cb(void *arg, struct spdk_bdev *bdev, int status) {
+    struct ubi_create_request *req = arg;
+    req->success = (status == 0);
+
+    wake_ut_thread();
+}
+
+void init_thread_create_bdev_ubi(void *arg) {
+    struct ubi_create_request *req = arg;
+    struct ubi_create_context *context = calloc(1, sizeof(struct ubi_create_context));
+    context->done_fn = bdev_ubi_create_done_cb;
+    context->done_arg = req;
+
+    bdev_ubi_create(&req->opts, context);
+}
+
+static void bdev_ubi_delete_done_cb(void *arg, int status) {
+    struct ubi_delete_request *req = arg;
+    req->success = (status == 0);
+
+    wake_ut_thread();
+}
+
+void init_thread_delete_bdev_ubi(void *arg) {
+    struct ubi_delete_request *req = arg;
+    bdev_ubi_delete(req->name, bdev_ubi_delete_done_cb, req);
+}
+
 static void usage(void) { printf("  -bdev Block device to be used for testing.\n"); }
 
 static int parse_arg(int argc, char *argv) {
@@ -69,6 +104,9 @@ static int parse_arg(int argc, char *argv) {
         break;
     case TEST_OPTION_IMAGE_PATH:
         g_opts.image_path = strdup(argv);
+        break;
+    case TEST_OPTION_FREE_BASE_BDEV:
+        g_opts.free_base_bdev = strdup(argv);
         break;
     default:
         return -EINVAL;
@@ -94,6 +132,11 @@ int main(int argc, char **argv) {
         g_opts.bdev_names[0] = strdup(DEFAULT_BDEV_NAME);
     }
 
+    if (g_opts.free_base_bdev == NULL) {
+        printf("Missing free_base_bdev\n");
+        return -1;
+    }
+
     if (g_opts.image_path == NULL) {
         printf("Missing image_path\n");
         return -1;
@@ -104,6 +147,7 @@ int main(int argc, char **argv) {
         SPDK_ERRLOG("Error occured while testing bdev_ubi.\n");
     }
 
+    free(g_opts.free_base_bdev);
     free(g_opts.image_path);
     for (int i = 0; i < g_opts.n_bdevs; i++)
         free(g_opts.bdev_names[i]);

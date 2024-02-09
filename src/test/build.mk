@@ -29,7 +29,7 @@ $(TEST_BIN_DIR)/test_ubi: $(TEST_DIR)/test_ubi/*.c $(TEST_DIR)/test_ubi/tests/*.
 
 check: $(TEST_BIN_DIR)/test_ubi $(DATA_TARGETS)
 	sudo $(TEST_BIN_DIR)/test_ubi --cpumask [0,1,2] --json $(TEST_DIR)/test_conf.json \
-		--json-ignore-init-errors $(TEST_BDEVS) \
+		--json-ignore-init-errors $(TEST_BDEVS) --free_base_bdev free_base_bdev \
 		--image_path $(TEST_BIN_DIR)/test_image.raw
 
 valgrind: $(TEST_BIN_DIR)/memcheck_ubi $(DATA_TARGETS)

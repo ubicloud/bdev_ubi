@@ -47,8 +47,6 @@ int ubi_create_channel_cb(void *io_device, void *ctx_buf) {
     int open_flags = O_RDONLY;
     if (ubi_bdev->directio)
         open_flags |= O_DIRECT;
-    else
-        SPDK_WARNLOG("No direct io");
     ch->image_file_fd = open(ubi_bdev->image_path, open_flags);
     if (ch->image_file_fd < 0) {
         UBI_ERRLOG(ubi_bdev, "could not open %s: %s\n", ubi_bdev->image_path,
