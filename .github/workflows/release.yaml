@@ -8,11 +8,21 @@ on:
 
 jobs:
   build:
-    name: Build
-    runs-on: ubuntu-22.04
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubicloud-standard-4
+            platform: x64
+            target_arch: corei7
+          - runner: ubicloud-standard-4-arm
+            platform: arm64
+            target_arch: native
     env:
       INSTALL_PREFIX: ${{ github.workspace }}/install/spdk
-      TARBALL_PATH: ${{ github.workspace }}/ubicloud-spdk-ubuntu-22.04-x64.tar.gz
+      TARBALL_PATH: ${{ github.workspace }}/ubicloud-spdk-ubuntu-22.04-${{ matrix.platform }}.tar.gz
     permissions:
       contents: write
     steps:
@@ -37,7 +47,7 @@ jobs:
           sudo apt install liburing-dev lcov
           sudo spdk/scripts/pkgdep.sh
       - name: Configure
-        run: spdk/configure --with-crypto --with-vhost --target-arch=corei7 --prefix=$INSTALL_PREFIX --pydir=$INSTALL_PREFIX/python/lib --disable-unit-tests --disable-tests --disable-examples
+        run: spdk/configure --with-crypto --with-vhost --target-arch=${{ matrix.target_arch }} --prefix=$INSTALL_PREFIX --pydir=$INSTALL_PREFIX/python/lib --disable-unit-tests --disable-tests --disable-examples
       - name: Build SPDK
         run: cd spdk && make -j16
       - name: Install
