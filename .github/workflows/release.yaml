@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: spdk/spdk
-          ref: refs/tags/v23.09
+          ref: refs/tags/v24.01
           fetch-depth: 0
           submodules: 'recursive'
           path: 'spdk'
@@ -47,13 +47,14 @@ jobs:
           sudo apt install liburing-dev lcov
           sudo spdk/scripts/pkgdep.sh
       - name: Configure
-        run: spdk/configure --with-crypto --with-vhost --target-arch=${{ matrix.target_arch }} --prefix=$INSTALL_PREFIX --pydir=$INSTALL_PREFIX/python/lib --disable-unit-tests --disable-tests --disable-examples
+        run: spdk/configure --with-crypto --with-vhost --without-nvme-cuse --target-arch=${{ matrix.target_arch }} --prefix=$INSTALL_PREFIX --disable-unit-tests --disable-tests --disable-examples
       - name: Build SPDK
         run: cd spdk && make -j16
       - name: Install
         run: |
           cd spdk
           make install
+          mkdir -p $INSTALL_PREFIX/python
           cp -R python/* $INSTALL_PREFIX/python/
           mkdir $INSTALL_PREFIX/scripts
           cp scripts/rpc.py $INSTALL_PREFIX/scripts
