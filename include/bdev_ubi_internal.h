@@ -183,9 +183,24 @@ struct ubi_io_channel {
     int has_reads;
     int wait_cycles;
 
+    /* snapshotting stuff */
+    bool snapshotting;
+    struct spdk_io_channel *snapshot_channel;
+    struct ubi_base_bdev_info snapshot_base_info;
+    uint64_t stripe_snapshot_idx[UBI_MAX_STRIPES];
+    struct {
+        uint32_t entries[UBI_URING_QUEUE_SIZE];
+        uint32_t head;
+        uint32_t tail;
+    } snapshot_queue;
+
     /* queue pointer */
     TAILQ_HEAD(, spdk_bdev_io) io;
 };
+
+/* bdev_ubi.c */
+int configure_base_bdev(const char *name, bool write,
+                        struct ubi_base_bdev_info *base_info);
 
 /* bdev_ubi_flush.c */
 void ubi_submit_flush_request(struct ubi_bdev_io *ubi_io);

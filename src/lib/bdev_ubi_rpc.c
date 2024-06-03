@@ -123,3 +123,67 @@ static void rpc_bdev_ubi_delete(struct spdk_jsonrpc_request *request,
     free(req.name);
 }
 SPDK_RPC_REGISTER("bdev_ubi_delete", rpc_bdev_ubi_delete, SPDK_RPC_RUNTIME)
+
+struct rpc_snapshot_ubi {
+    char *source;
+    char *target;
+};
+
+static const struct spdk_json_object_decoder rpc_snapshot_ubi_decoders[] = {
+    {"source", offsetof(struct rpc_snapshot_ubi, source), spdk_json_decode_string},
+    {"target", offsetof(struct rpc_snapshot_ubi, target), spdk_json_decode_string},
+};
+
+static void rpc_bdev_ubi_snapshot_cb(void *cb_arg, int bdeverrno) {
+    struct spdk_jsonrpc_request *request = cb_arg;
+
+    if (bdeverrno == 0) {
+        spdk_jsonrpc_send_bool_response(request, true);
+    } else {
+        spdk_jsonrpc_send_error_response(request, bdeverrno, spdk_strerror(-bdeverrno));
+    }
+}
+
+static void rpc_bdev_ubi_snapshot(struct spdk_jsonrpc_request *request,
+                                  const struct spdk_json_val *params) {
+    struct rpc_snapshot_ubi req = {NULL};
+
+    if (spdk_json_decode_object(params, rpc_snapshot_ubi_decoders,
+                                SPDK_COUNTOF(rpc_snapshot_ubi_decoders), &req)) {
+        spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INTERNAL_ERROR,
+                                         "spdk_json_decode_object failed");
+        return;
+    }
+
+    bdev_ubi_snapshot(req.source, req.target, rpc_bdev_ubi_snapshot_cb, request);
+    free(req.source);
+    free(req.target);
+}
+
+SPDK_RPC_REGISTER("bdev_ubi_snapshot", rpc_bdev_ubi_snapshot, SPDK_RPC_RUNTIME)
+
+struct rpc_snapshot_status {
+    char *name;
+};
+
+static const struct spdk_json_object_decoder rpc_snapshot_status_decoders[] = {
+    {"name", offsetof(struct rpc_snapshot_status, name), spdk_json_decode_string},
+};
+
+static void rpc_bdev_ubi_snapshot_status(struct spdk_jsonrpc_request *request,
+                                         const struct spdk_json_val *params) {
+    struct rpc_snapshot_status req = {NULL};
+
+    if (spdk_json_decode_object(params, rpc_snapshot_status_decoders,
+                                SPDK_COUNTOF(rpc_snapshot_status_decoders), &req)) {
+        spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INTERNAL_ERROR,
+                                         "spdk_json_decode_object failed");
+        return;
+    }
+
+    // todo: implement bdev_ubi_snapshot_status
+
+    free(req.name);
+}
+
+SPDK_RPC_REGISTER("bdev_ubi_snapshot_status", rpc_bdev_ubi_snapshot_status, SPDK_RPC_RUNTIME)

@@ -29,8 +29,6 @@ static void ubi_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *
 static bool ubi_io_type_supported(void *ctx, enum spdk_bdev_io_type io_type);
 static struct spdk_io_channel *ubi_get_io_channel(void *ctx);
 static void ubi_write_config_json(struct spdk_bdev *bdev, struct spdk_json_write_ctx *w);
-static int configure_base_bdev(const char *name, bool write,
-                               struct ubi_base_bdev_info *base_info);
 static void ubi_handle_base_bdev_event(enum spdk_bdev_event_type type,
                                        struct spdk_bdev *bdev, void *event_ctx);
 static bool ubi_bdev_find_by_base_bdev(struct spdk_bdev *base_bdev,
@@ -529,8 +527,8 @@ static struct spdk_io_channel *ubi_get_io_channel(void *ctx) {
  * configure_base_bdev opens and claims a bdev identified by then given name.
  * Fills in "base_info" and returns success status.
  */
-static int configure_base_bdev(const char *name, bool write,
-                               struct ubi_base_bdev_info *base_info) {
+int configure_base_bdev(const char *name, bool write,
+                        struct ubi_base_bdev_info *base_info) {
     struct spdk_bdev_desc *desc;
     struct spdk_bdev *bdev;
     int rc;
