@@ -15,14 +15,20 @@ jobs:
       matrix:
         include:
           - runner: ubicloud-standard-4
-            platform: x64
+            platform: ubuntu-22.04-x64
+            target_arch: corei7
+          - runner:  ubicloud-standard-4-ubuntu-2404
+            platform: ubuntu-24.04-x64
             target_arch: corei7
           - runner: ubicloud-standard-4-arm
-            platform: arm64
+            platform: ubuntu-22.04-arm64
+            target_arch: native
+          - runner: ubicloud-standard-4-arm-ubuntu-2404
+            platform: ubuntu-24.04-arm64
             target_arch: native
     env:
       INSTALL_PREFIX: ${{ github.workspace }}/install/spdk
-      TARBALL_PATH: ${{ github.workspace }}/ubicloud-spdk-ubuntu-22.04-${{ matrix.platform }}.tar.gz
+      TARBALL_PATH: ${{ github.workspace }}/ubicloud-spdk-${{ matrix.platform }}.tar.gz
     permissions:
       contents: write
     steps:
