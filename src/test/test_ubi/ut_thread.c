@@ -36,10 +36,32 @@ void run_ut_thread(void *arg) {
 
     for (size_t i = 0; i < opts->n_bdevs; i++) {
         SPDK_NOTICELOG("Testing %s\n", opts->bdev_names[i]);
-        test_bdev_io(opts->bdev_names[i], opts->image_path, &n_tests, &n_failures);
+        test_bdev_io(opts->bdev_names[i], &n_tests, &n_failures);
     }
 
-    test_bdev_recreate(opts->free_base_bdev, opts->image_path, &n_tests, &n_failures);
+    n_tests++;
+    if (!test_bdev_recreate()) {
+        SPDK_WARNLOG("test_bdev_recreate failed\n");
+        n_failures++;
+    }
+
+    n_tests++;
+    if (!test_bdev_create_errors()) {
+        SPDK_WARNLOG("test_bdev_create_errors failed\n");
+        n_failures++;
+    }
+
+    n_tests++;
+    if (!test_write_config()) {
+        SPDK_WARNLOG("test_write_config failed\n");
+        n_failures++;
+    }
+
+    n_tests++;
+    if (!test_io_channel_create_errors()) {
+        SPDK_WARNLOG("test_io_channel_create_errors failed\n");
+        n_failures++;
+    }
 
     SPDK_NOTICELOG("Tests run: %u, failures: %u\n", n_tests, n_failures);
 

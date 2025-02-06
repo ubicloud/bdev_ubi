@@ -7,3 +7,4 @@ bin/*
 valgrind.log
 coverage.info
 coverage_report/*
+*.code-workspace

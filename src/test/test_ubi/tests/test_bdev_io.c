@@ -1,7 +1,7 @@
 #include "test_ubi.h"
 
 struct bdev_io_test_state {
-    struct test_bdev bdev;
+    struct bdev_desc_ch_pair bdev;
     FILE *image_file;
 
     uint32_t blocklen;
@@ -10,7 +10,6 @@ struct bdev_io_test_state {
     uint64_t n_image_blocks;
 };
 
-static bool open_bdev(const char *bdev_name, struct bdev_io_test_state *state);
 static bool open_base_image(const char *image_path, struct bdev_io_test_state *state);
 static bool test_read(struct bdev_io_test_state *state, uint32_t start, uint32_t count);
 static bool test_write(struct bdev_io_test_state *state, uint32_t start, uint32_t count);
@@ -19,17 +18,17 @@ static bool verify_image_block(struct bdev_io_test_state *state, uint64_t block,
                                char *buf);
 static bool file_size(FILE *f, uint64_t *out);
 
-void test_bdev_io(const char *bdev_name, const char *image_path, int *n_tests,
-                  int *n_failures) {
+void test_bdev_io(const char *bdev_name, int *n_tests, int *n_failures) {
     struct bdev_io_test_state state;
     memset(&state, 0, sizeof(state));
 
+    const char *image_path = TEST_IMAGE_PATH;
     if (!open_base_image(image_path, &state)) {
         (*n_failures)++;
         return;
     }
 
-    if (!open_bdev(bdev_name, &state)) {
+    if (!open_bdev_and_ch(bdev_name, &state.bdev)) {
         fclose(state.image_file);
         (*n_failures)++;
         return;
@@ -59,8 +58,8 @@ void test_bdev_io(const char *bdev_name, const char *image_path, int *n_tests,
     // Some random io
     RUN_TEST(test_random_ops(&state, 50));
 
-    execute_spdk_function(close_io_channel, &state);
-    spdk_bdev_close(state.bdev.desc);
+    fclose(state.image_file);
+    close_bdev_and_ch(&state.bdev);
 }
 
 static bool open_base_image(const char *image_path, struct bdev_io_test_state *state) {
@@ -73,27 +72,6 @@ static bool open_base_image(const char *image_path, struct bdev_io_test_state *s
 
     if (!file_size(state->image_file, &state->image_size)) {
         fclose(state->image_file);
-        return false;
-    }
-
-    return true;
-}
-
-static void ubi_event_cb(enum spdk_bdev_event_type type, struct spdk_bdev *bdev,
-                         void *event_ctx) {
-    SPDK_NOTICELOG("Unsupported bdev event: type %d\n", type);
-}
-
-static bool open_bdev(const char *bdev_name, struct bdev_io_test_state *state) {
-    int rc = spdk_bdev_open_ext(bdev_name, true, ubi_event_cb, NULL, &state->bdev.desc);
-    if (rc < 0) {
-        SPDK_ERRLOG("Could not open bdev %s: %s\n", bdev_name, strerror(-rc));
-        return false;
-    }
-
-    execute_spdk_function(open_io_channel, &state->bdev);
-    if (state->bdev.desc == NULL || state->bdev.ch == NULL) {
-        spdk_bdev_close(state->bdev.desc);
         return false;
     }
 
