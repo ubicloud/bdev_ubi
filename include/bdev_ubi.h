@@ -1,5 +1,5 @@
-#ifndef SPDK_BDEV_NULL_H
-#define SPDK_BDEV_NULL_H
+#ifndef BDEV_UBI_H
+#define BDEV_UBI_H
 
 #include "spdk/stdinc.h"
 
@@ -28,7 +28,7 @@ struct ubi_create_context {
     void *done_arg;
 
     struct ubi_bdev *ubi_bdev;
-    bool registerd;
+    bool registered_io_device;
 
     /* temporary channel used to read metadata */
     struct spdk_io_channel *base_ch;
@@ -41,4 +41,4 @@ void bdev_ubi_create(const struct spdk_ubi_bdev_opts *opts,
                      struct ubi_create_context *context);
 void bdev_ubi_delete(const char *bdev_name, spdk_delete_ubi_complete cb_fn, void *cb_arg);
 
-#endif /* SPDK_BDEV_NULL_H */
+#endif /* BDEV_UBI_H */

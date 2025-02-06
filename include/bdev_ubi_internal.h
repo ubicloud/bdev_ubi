@@ -187,6 +187,9 @@ struct ubi_io_channel {
     TAILQ_HEAD(, spdk_bdev_io) io;
 };
 
+/* bdev_ubi.c */
+void ubi_write_config_json(struct spdk_bdev *bdev, struct spdk_json_write_ctx *w);
+
 /* bdev_ubi_flush.c */
 void ubi_submit_flush_request(struct ubi_bdev_io *ubi_io);
 
