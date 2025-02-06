@@ -146,6 +146,60 @@
             "block_size": 512,
             "num_blocks": 204800
           }
+        },
+        {
+          "method": "bdev_malloc_create",
+          "params": {
+            "name": "free_base_bdev_2",
+            "block_size": 512,
+            "num_blocks": 204800
+          }
+        },
+        {
+          "method": "bdev_aio_create",
+          "params": {
+            "name": "base_with_invalid_magic",
+            "block_size": 512,
+            "filename": "bin/test/invalid_disk.raw"
+          }
+        },
+        {
+          "method": "bdev_aio_create",
+          "params": {
+            "name": "too_small_base",
+            "block_size": 512,
+            "filename": "bin/test/too_small_disk.raw"
+          }
+        },
+        {
+          "method": "bdev_null_create",
+          "params": {
+            "name": "base_bdev_to_be_deleted",
+            "block_size": 512,
+            "num_blocks": 204800
+          }
+        },
+        {
+          "method": "bdev_ubi_create",
+          "params": {
+            "name": "ubi_with_base_to_be_deleted",
+            "base_bdev": "base_bdev_to_be_deleted",
+            "image_path": "bin/test/test_image.raw",
+            "stripe_size_kb": 1024
+          }
+        },
+        {
+          "method": "bdev_null_resize",
+          "params": {
+            "name": "base_bdev_to_be_deleted",
+            "new_size": 110
+          }
+        },
+        {
+          "method": "bdev_null_delete",
+          "params": {
+            "name": "base_bdev_to_be_deleted"
+          }
         }
       ]
     }

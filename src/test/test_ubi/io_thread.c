@@ -7,7 +7,7 @@ void exit_io_thread(void *arg) {
 }
 
 void open_io_channel(void *arg) {
-    struct test_bdev *bdev = arg;
+    struct bdev_desc_ch_pair *bdev = arg;
 
     bdev->ch = spdk_bdev_get_io_channel(bdev->desc);
     if (bdev->ch == NULL) {
@@ -18,9 +18,10 @@ void open_io_channel(void *arg) {
 }
 
 void close_io_channel(void *arg) {
-    struct test_bdev *bdev = arg;
-    if (bdev->ch)
+    struct bdev_desc_ch_pair *bdev = arg;
+    if (bdev->ch) {
         spdk_put_io_channel(bdev->ch);
+    }
 
     wake_ut_thread();
 }

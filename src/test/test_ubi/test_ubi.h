@@ -17,14 +17,17 @@
 #define MAX_BLOCK_SIZE 4096
 #define MAX_BDEVS 10
 
-struct test_bdev {
+#define TEST_FREE_BASE_BDEV "free_base_bdev"
+#define TEST_IMAGE_PATH "bin/test/test_image.raw"
+#define TEST_BASE_WITH_INVALID_MAGIC "base_with_invalid_magic"
+#define TEST_TOO_SMALL_BASE "too_small_base"
+
+struct bdev_desc_ch_pair {
     struct spdk_bdev_desc *desc;
     struct spdk_io_channel *ch;
 };
 
 struct test_opts {
-    char *free_base_bdev;
-    char *image_path;
     char *bdev_names[MAX_BDEVS];
     int n_bdevs;
 
@@ -54,7 +57,7 @@ extern void init_thread_delete_bdev_ubi(void *arg);
 struct ubi_io_request {
     char buf[MAX_BLOCK_SIZE];
     uint64_t block_idx;
-    struct test_bdev *bdev;
+    struct bdev_desc_ch_pair *bdev;
 
     bool success;
 };
@@ -75,10 +78,21 @@ extern void wake_ut_thread(void);
 extern void run_ut_thread(void *arg);
 
 /*
+ * common.c
+ */
+extern bool verify_create(const char *base_bdev, const char *image_path,
+                          const char *bdev_name);
+extern bool verify_delete(const char *bdev_name);
+extern bool open_bdev_and_ch(const char *bdev_name, struct bdev_desc_ch_pair *bdev);
+extern bool close_bdev_and_ch(struct bdev_desc_ch_pair *bdev);
+
+/*
  * tests
  */
-extern void test_bdev_io(const char *bdev_name, const char *image_path, int *n_tests,
-                         int *n_failures);
-extern void test_bdev_recreate(const char *base_bdev, const char *image_path,
-                               int *n_tests, int *n_failures);
+extern void test_bdev_io(const char *bdev_name, int *n_tests, int *n_failures);
+extern bool test_bdev_recreate(void);
+extern bool test_bdev_create_errors(void);
+extern bool test_write_config(void);
+extern bool test_io_channel_create_errors(void);
+
 #endif
