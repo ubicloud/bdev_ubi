@@ -1,0 +1,45 @@
+diff --git a/lib/thread/iobuf.c b/lib/thread/iobuf.c
+index 76582de88..1657f5778 100644
+--- a/lib/thread/iobuf.c
++++ b/lib/thread/iobuf.c
+@@ -276,6 +276,10 @@ spdk_iobuf_channel_init(struct spdk_iobuf_channel *ch, const char *name,
+ 	STAILQ_INIT(&ch->small.cache);
+ 	STAILQ_INIT(&ch->large.cache);
+ 
++	SPDK_WARNLOG("allocating iobuff channel, name: %s, large_pool.count: %ld, small_pool.count:%ld, small_cache_size: %u, large_cache_size: %u\n",
++		name, spdk_ring_count(g_iobuf.large_pool), spdk_ring_count(g_iobuf.small_pool),
++		small_cache_size, large_cache_size);
++
+ 	for (i = 0; i < small_cache_size; ++i) {
+ 		if (spdk_ring_dequeue(g_iobuf.small_pool, (void **)&buf, 1) == 0) {
+ 			SPDK_ERRLOG("Failed to populate iobuf small buffer cache. "
+@@ -301,6 +305,9 @@ spdk_iobuf_channel_init(struct spdk_iobuf_channel *ch, const char *name,
+ 		ch->large.cache_count++;
+ 	}
+ 
++	SPDK_WARNLOG("allocated iobuff channel, name: %s, large_pool.count: %ld, small_pool.count:%ld\n",
++		name, spdk_ring_count(g_iobuf.large_pool), spdk_ring_count(g_iobuf.small_pool));
++
+ 	return 0;
+ error:
+ 	spdk_iobuf_channel_fini(ch);
+@@ -314,6 +321,9 @@ spdk_iobuf_channel_fini(struct spdk_iobuf_channel *ch)
+ 	struct spdk_iobuf_entry *entry __attribute__((unused));
+ 	struct spdk_iobuf_buffer *buf;
+ 
++	SPDK_WARNLOG("releasing iobuf channel, large_pool.count: %ld, small_pool.count:%ld\n",
++		 spdk_ring_count(g_iobuf.large_pool), spdk_ring_count(g_iobuf.small_pool));
++
+ 	/* Make sure none of the wait queue entries are coming from this module */
+ 	STAILQ_FOREACH(entry, ch->small.queue, stailq) {
+ 		assert(entry->module != ch->module);
+@@ -341,6 +351,9 @@ spdk_iobuf_channel_fini(struct spdk_iobuf_channel *ch)
+ 
+ 	spdk_put_io_channel(ch->parent);
+ 	ch->parent = NULL;
++
++	SPDK_WARNLOG("released iobuff channel, large_pool.count: %ld, small_pool.count:%ld\n",
++		spdk_ring_count(g_iobuf.large_pool), spdk_ring_count(g_iobuf.small_pool));
+ }
+ 
+ int
