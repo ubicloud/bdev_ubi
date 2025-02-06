@@ -55,7 +55,10 @@ jobs:
       - name: Configure
         run: spdk/configure --with-crypto --with-vhost --without-nvme-cuse --target-arch=${{ matrix.target_arch }} --prefix=$INSTALL_PREFIX --pydir=$INSTALL_PREFIX/python/lib --disable-unit-tests --disable-tests --disable-examples
       - name: Build SPDK
-        run: cd spdk && make -j16
+        run: |
+          cd spdk
+          git apply ../patches/0001-spdk-v23.09-debug-iobuff.patch
+          make -j16
       - name: Install
         run: |
           cd spdk
