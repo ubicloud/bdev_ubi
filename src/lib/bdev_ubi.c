@@ -1,5 +1,6 @@
 #include "bdev_ubi.h"
 #include "bdev_ubi_internal.h"
+#include "bdev_ubi_test_control.h"
 
 #include "spdk/fd.h"
 #include "spdk/likely.h"
@@ -28,7 +29,6 @@ static void ubi_finish_create(int status, struct ubi_create_context *context);
 static void ubi_submit_request(struct spdk_io_channel *ch, struct spdk_bdev_io *bdev_io);
 static bool ubi_io_type_supported(void *ctx, enum spdk_bdev_io_type io_type);
 static struct spdk_io_channel *ubi_get_io_channel(void *ctx);
-static void ubi_write_config_json(struct spdk_bdev *bdev, struct spdk_json_write_ctx *w);
 static int configure_base_bdev(const char *name, bool write,
                                struct ubi_base_bdev_info *base_info);
 static void ubi_handle_base_bdev_event(enum spdk_bdev_event_type type,
@@ -41,6 +41,12 @@ static void ubi_set_version(struct ubi_metadata *metadata, uint16_t major,
                             uint16_t minor);
 static void ubi_get_version(struct ubi_metadata *metadata, uint16_t *major,
                             uint16_t *minor);
+
+/*
+ * Test control
+ */
+static bool g_fail_create_channel_for_metadata_read = false;
+static bool g_fail_calloc_ubi_bdev = false;
 
 /*
  * Module Interface
@@ -96,7 +102,7 @@ void bdev_ubi_create(const struct spdk_ubi_bdev_opts *opts,
     int rc;
 
     if (!opts) {
-        SPDK_ERRLOG("No options provided for Ubi bdev %s.\n", opts->name);
+        SPDK_ERRLOG("No options provided for Ubi bdev.\n");
         ubi_finish_create(-EINVAL, context);
         return;
     }
@@ -106,7 +112,7 @@ void bdev_ubi_create(const struct spdk_ubi_bdev_opts *opts,
      * ensures that metadata, strip_status, and metadata_dirty are all 0
      * initially.
      */
-    ubi_bdev = calloc(1, sizeof(struct ubi_bdev));
+    ubi_bdev = g_fail_calloc_ubi_bdev ? NULL : calloc(1, sizeof(struct ubi_bdev));
     if (!ubi_bdev) {
         SPDK_ERRLOG("could not allocate ubi_bdev %s\n", opts->name);
         ubi_finish_create(-ENOMEM, context);
@@ -119,7 +125,7 @@ void bdev_ubi_create(const struct spdk_ubi_bdev_opts *opts,
      */
     context->ubi_bdev = ubi_bdev;
 
-    ubi_bdev->bdev.name = strdup(opts->name);
+    ubi_bdev->bdev.name = opts->name ? strdup(opts->name) : NULL;
     if (!ubi_bdev->bdev.name) {
         SPDK_ERRLOG("could not duplicate name for ubi_bdev %s\n", opts->name);
         ubi_finish_create(-ENOMEM, context);
@@ -131,7 +137,7 @@ void bdev_ubi_create(const struct spdk_ubi_bdev_opts *opts,
 
     rc = configure_base_bdev(opts->base_bdev_name, true, &ubi_bdev->base_bdev_info);
     if (rc) {
-        UBI_ERRLOG(ubi_bdev, "could not get base image bdev\n");
+        UBI_ERRLOG(ubi_bdev, "could not get base bdev\n");
         ubi_finish_create(rc, context);
         return;
     }
@@ -154,6 +160,7 @@ void bdev_ubi_create(const struct spdk_ubi_bdev_opts *opts,
 
     rc = ubi_init_layout_params(ubi_bdev);
     if (rc) {
+        UBI_ERRLOG(ubi_bdev, "could not initialize layout parameters\n");
         ubi_finish_create(rc, context);
         return;
     }
@@ -177,7 +184,7 @@ void bdev_ubi_create(const struct spdk_ubi_bdev_opts *opts,
 
     spdk_io_device_register(ubi_bdev, ubi_create_channel_cb, ubi_destroy_channel_cb,
                             sizeof(struct ubi_io_channel), ubi_bdev->bdev.name);
-    context->registerd = true;
+    context->registered_io_device = true;
 
     // read metadata asynchronously.
     ubi_start_read_metadata(ubi_bdev, context);
@@ -191,7 +198,14 @@ void bdev_ubi_create(const struct spdk_ubi_bdev_opts *opts,
 static void ubi_start_read_metadata(struct ubi_bdev *ubi_bdev,
                                     struct ubi_create_context *context) {
     struct spdk_bdev_desc *base_desc = ubi_bdev->base_bdev_info.desc;
-    context->base_ch = spdk_bdev_get_io_channel(base_desc);
+    context->base_ch = g_fail_create_channel_for_metadata_read
+                           ? NULL
+                           : spdk_bdev_get_io_channel(base_desc);
+    if (context->base_ch == NULL) {
+        UBI_ERRLOG(ubi_bdev, "could not get io channel for base bdev\n");
+        ubi_finish_create(-ENOMEM, context);
+        return;
+    }
     int offset = 0;
     int block_cnt = UBI_METADATA_SIZE / ubi_bdev->bdev.blocklen;
     int ret = spdk_bdev_read_blocks(base_desc, context->base_ch, &ubi_bdev->metadata,
@@ -276,7 +290,6 @@ static void ubi_finish_create(int status, struct ubi_create_context *context) {
         status = spdk_bdev_register(&ubi_bdev->bdev);
         if (status != 0) {
             UBI_ERRLOG(ubi_bdev, "could not register ubi_bdev\n");
-            spdk_bdev_module_release_bdev(&ubi_bdev->bdev);
         } else {
             TAILQ_INSERT_TAIL(&g_ubi_bdev_head, ubi_bdev, tailq);
         }
@@ -284,10 +297,11 @@ static void ubi_finish_create(int status, struct ubi_create_context *context) {
 
     if (status != 0 && ubi_bdev) {
         if (ubi_bdev->base_bdev_info.desc) {
+            spdk_bdev_module_release_bdev(ubi_bdev->base_bdev_info.bdev);
             spdk_bdev_close(ubi_bdev->base_bdev_info.desc);
         }
 
-        if (context->registerd) {
+        if (context->registered_io_device) {
             spdk_io_device_unregister(ubi_bdev, NULL);
         }
 
@@ -400,7 +414,7 @@ static int ubi_destruct(void *ctx) {
         spdk_thread_send_msg(ubi_bdev->thread, ubi_close_base_bdev,
                              ubi_bdev->base_bdev_info.desc);
     } else {
-        spdk_bdev_close(ubi_bdev->base_bdev_info.desc);
+        ubi_close_base_bdev(ubi_bdev->base_bdev_info.desc);
     }
 
     /* Unregister the io_device. */
@@ -422,7 +436,7 @@ static void ubi_close_base_bdev(void *ctx) {
  * ubi_write_config_json writes out config parameters for the given bdev to a
  * json writer.
  */
-static void ubi_write_config_json(struct spdk_bdev *bdev, struct spdk_json_write_ctx *w) {
+void ubi_write_config_json(struct spdk_bdev *bdev, struct spdk_json_write_ctx *w) {
     struct ubi_bdev *ubi_bdev = bdev->ctxt;
 
     spdk_json_write_object_begin(w);
@@ -434,6 +448,9 @@ static void ubi_write_config_json(struct spdk_bdev *bdev, struct spdk_json_write
     spdk_json_write_named_string(w, "base_bdev", ubi_bdev->base_bdev_info.bdev->name);
     spdk_json_write_named_string(w, "image_path", ubi_bdev->image_path);
     spdk_json_write_named_uint32(w, "stripe_size_kb", ubi_bdev->stripe_size_kb);
+    spdk_json_write_named_bool(w, "copy_on_read", ubi_bdev->copy_on_read);
+    spdk_json_write_named_bool(w, "directio", ubi_bdev->directio);
+    spdk_json_write_named_bool(w, "no_sync", ubi_bdev->no_sync);
     spdk_json_write_object_end(w);
 
     spdk_json_write_object_end(w);
@@ -588,8 +605,7 @@ static void ubi_handle_base_bdev_remove_event(struct spdk_bdev *base_bdev) {
         return;
     }
 
-    spdk_bdev_module_release_bdev(base_bdev);
-    spdk_bdev_close(base_info->desc);
+    spdk_bdev_unregister(&ubi_bdev->bdev, NULL, NULL);
 }
 
 /*
@@ -632,5 +648,14 @@ static void ubi_get_version(struct ubi_metadata *metadata, uint16_t *major,
     *major = load_littleendian_shortint(metadata->versionMajor);
     *minor = load_littleendian_shortint(metadata->versionMinor);
 }
+
+/*
+ * Test control
+ */
+void ubi_fail_create_channel_for_metadata_read(bool fail) {
+    g_fail_create_channel_for_metadata_read = fail;
+}
+
+void ubi_fail_calloc_ubi_bdev(bool fail) { g_fail_calloc_ubi_bdev = fail; }
 
 SPDK_LOG_REGISTER_COMPONENT(bdev_ubi)

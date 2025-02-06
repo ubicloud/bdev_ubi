@@ -1,6 +1,5 @@
-
 #include "bdev_ubi_internal.h"
-
+#include "bdev_ubi_test_control.h"
 #include "spdk/likely.h"
 #include "spdk/log.h"
 
@@ -22,6 +21,14 @@ static void ubi_init_ext_io_opts(struct spdk_bdev_io *bdev_io,
                                  struct spdk_bdev_ext_io_opts *opts);
 
 /*
+ * Test control
+ */
+static bool g_fail_register_poller = false;
+static bool g_fail_create_base_ch = false;
+static bool g_fail_image_file_open = false;
+static bool g_fail_uring_queue_init = false;
+
+/*
  * ubi_create_channel_cb is called when an I/O channel needs to be created. In
  * the VM world this can happen for example when VMM's firmware needs to use the
  * disk, or when the virtio device is initiated by the operating system.
@@ -32,9 +39,20 @@ int ubi_create_channel_cb(void *io_device, void *ctx_buf) {
 
     ch->ubi_bdev = ubi_bdev;
     TAILQ_INIT(&ch->io);
-    ch->poller = SPDK_POLLER_REGISTER(ubi_io_poll, ch, 0);
+    ch->poller = g_fail_register_poller ? NULL : spdk_poller_register(ubi_io_poll, ch, 0);
+    if (ch->poller == NULL) {
+        UBI_ERRLOG(ubi_bdev, "could not register poller\n");
+        return -ENOMEM;
+    }
 
-    ch->base_channel = spdk_bdev_get_io_channel(ubi_bdev->base_bdev_info.desc);
+    ch->base_channel = g_fail_create_base_ch
+                           ? NULL
+                           : spdk_bdev_get_io_channel(ubi_bdev->base_bdev_info.desc);
+    if (ch->base_channel == NULL) {
+        spdk_poller_unregister(&ch->poller);
+        UBI_ERRLOG(ubi_bdev, "could not get io channel for base bdev\n");
+        return -ENOMEM;
+    }
 
     ch->stripe_fetch_queue.head = 0;
     ch->stripe_fetch_queue.tail = 0;
@@ -47,8 +65,11 @@ int ubi_create_channel_cb(void *io_device, void *ctx_buf) {
     int open_flags = O_RDONLY;
     if (ubi_bdev->directio)
         open_flags |= O_DIRECT;
-    ch->image_file_fd = open(ubi_bdev->image_path, open_flags);
+    ch->image_file_fd =
+        g_fail_image_file_open ? -1 : open(ubi_bdev->image_path, open_flags);
     if (ch->image_file_fd < 0) {
+        spdk_poller_unregister(&ch->poller);
+        spdk_put_io_channel(ch->base_channel);
         UBI_ERRLOG(ubi_bdev, "could not open %s: %s\n", ubi_bdev->image_path,
                    strerror(errno));
         return -EINVAL;
@@ -56,8 +77,13 @@ int ubi_create_channel_cb(void *io_device, void *ctx_buf) {
 
     struct io_uring_params io_uring_params;
     memset(&io_uring_params, 0, sizeof(io_uring_params));
-    int rc = io_uring_queue_init(UBI_URING_QUEUE_SIZE, &ch->image_file_ring, 0);
+    int rc = g_fail_uring_queue_init
+                 ? -1
+                 : io_uring_queue_init(UBI_URING_QUEUE_SIZE, &ch->image_file_ring, 0);
     if (rc != 0) {
+        spdk_poller_unregister(&ch->poller);
+        spdk_put_io_channel(ch->base_channel);
+        close(ch->image_file_fd);
         UBI_ERRLOG(ubi_bdev, "Unable to setup io_uring: %s\n", strerror(-rc));
         return -EINVAL;
     }
@@ -294,6 +320,11 @@ static void get_buf_for_read_cb(struct spdk_io_channel *ch, struct spdk_bdev_io 
         struct ubi_io_channel *ubi_ch = ubi_io->ubi_ch;
         struct io_uring *ring = &ubi_ch->image_file_ring;
         struct io_uring_sqe *sqe = io_uring_get_sqe(ring);
+        if (!sqe) {
+            UBI_ERRLOG(ubi_bdev, "No available SQE in io_uring\n");
+            ubi_complete_io(ubi_io, false);
+            return;
+        }
         uint64_t offset = start_block * ubi_bdev->bdev.blocklen;
         io_uring_prep_readv(sqe, ubi_ch->image_file_fd, bdev_io->u.bdev.iovs,
                             bdev_io->u.bdev.iovcnt, offset);
@@ -392,3 +423,11 @@ static void ubi_init_ext_io_opts(struct spdk_bdev_io *bdev_io,
     opts->memory_domain_ctx = bdev_io->u.bdev.memory_domain_ctx;
     opts->metadata = bdev_io->u.bdev.md_buf;
 }
+
+/*
+ * Test control
+ */
+void ubi_io_channel_fail_register_poller(bool fail) { g_fail_register_poller = fail; }
+void ubi_io_channel_fail_create_base_ch(bool fail) { g_fail_create_base_ch = fail; }
+void ubi_io_channel_fail_image_file_open(bool fail) { g_fail_image_file_open = fail; }
+void ubi_io_channel_fail_uring_queue_init(bool fail) { g_fail_uring_queue_init = fail; }
