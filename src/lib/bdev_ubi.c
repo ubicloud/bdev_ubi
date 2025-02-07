@@ -537,9 +537,9 @@ static void ubi_submit_request(struct spdk_io_channel *_ch,
  * ubi_get_io_channel return I/O channel pointer for the given ubi bdev.
  */
 static struct spdk_io_channel *ubi_get_io_channel(void *ctx) {
-    struct bdev_ubi *bdev_ubi = ctx;
+    struct ubi_bdev *ubi_bdev = ctx;
 
-    return spdk_get_io_channel(bdev_ubi);
+    return spdk_get_io_channel(ubi_bdev);
 }
 
 /*
