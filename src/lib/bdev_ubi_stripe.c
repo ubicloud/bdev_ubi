@@ -1,4 +1,3 @@
-
 #include "bdev_ubi_internal.h"
 
 #include "spdk/likely.h"
@@ -22,8 +21,8 @@ void ubi_start_fetch_stripe(struct ubi_io_channel *ch,
     uint64_t offset = ubi_bdev->stripe_size_kb * 1024L * stripe_idx;
     uint32_t nbytes = ubi_bdev->stripe_size_kb * 1024L;
 
-    uint32_t alignment_offset =
-        alignment - ((uint64_t)stripe_fetch->buf & (alignment - 1));
+    uint64_t remainder = (uint64_t)stripe_fetch->buf & (alignment - 1);
+    uint32_t alignment_offset = remainder ? (alignment - remainder) : 0;
     stripe_fetch->buf_aligned = stripe_fetch->buf + alignment_offset;
 
     io_uring_prep_read(sqe, ch->image_file_fd, stripe_fetch->buf_aligned, nbytes, offset);
