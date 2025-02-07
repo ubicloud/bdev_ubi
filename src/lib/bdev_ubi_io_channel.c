@@ -171,7 +171,7 @@ static int ubi_io_poll(void *arg) {
         bdev_io = TAILQ_FIRST(&ch->io);
 
         if (bdev_io->type == SPDK_BDEV_IO_TYPE_READ &&
-            ch->active_reads > UBI_MAX_CONCURRENT_READS)
+            ch->active_reads >= UBI_MAX_CONCURRENT_READS)
             break;
 
         uint64_t start_block = bdev_io->u.bdev.offset_blocks;
@@ -265,17 +265,17 @@ static int ubi_complete_image_io(struct ubi_io_channel *ch) {
     struct io_uring *ring = &ch->image_file_ring;
     struct io_uring_cqe *cqe[64];
 
-    int ret = io_uring_peek_batch_cqe(ring, cqe, 64);
-    if (ret == -EAGAIN) {
+    int batch = io_uring_peek_batch_cqe(ring, cqe, 64);
+    if (batch == -EAGAIN) {
         return 0;
-    } else if (ret < 0) {
-        UBI_ERRLOG(ch->ubi_bdev, "io_uring_peek_cqe: %s\n", strerror(-ret));
+    } else if (batch < 0) {
+        UBI_ERRLOG(ch->ubi_bdev, "io_uring_peek_cqe: %s\n", strerror(-batch));
         return -1;
     }
 
-    for (int i = 0; i < ret; i++) {
+    int ret = 0;
+    for (int i = 0; i < batch; i++) {
         struct ubi_io_op *op = io_uring_cqe_get_data(cqe[i]);
-
         switch (op->type) {
         case UBI_STRIPE_FETCH:
             ret = ubi_complete_fetch_stripe(ch, (struct stripe_fetch *)op, cqe[i]->res);
@@ -284,8 +284,6 @@ static int ubi_complete_image_io(struct ubi_io_channel *ch) {
             ret = ubi_complete_read_from_image(ch, (struct ubi_bdev_io *)op, cqe[i]->res);
             break;
         }
-
-        /* Mark the completion as seen. */
         io_uring_cqe_seen(ring, cqe[i]);
     }
 
